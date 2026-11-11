@@ -4,6 +4,18 @@
 
 [下载 Windows x64 便携版](https://github.com/zhangga/ShortDramaPlayer/releases/latest) · [使用说明](desktop/windows/使用说明.txt) · [构建与维护](docs/windows-maintenance.md)
 
+## 界面预览
+
+### 常规播放窗口
+
+![常规播放窗口，视频上方显示弹幕，底部提供进度、倍速和音量控制](docs/screenshots/windows-main-player.png)
+
+### 小窗与任务栏
+
+| 置顶竖屏小窗 | 任务栏观看 |
+| :---: | :---: |
+| <img src="docs/screenshots/windows-compact-player.png" width="220" alt="带播放控制栏的置顶竖屏小窗"> | **任务栏内预览**<br><img src="docs/screenshots/windows-taskbar-preview.png" width="185" alt="播放画面嵌在 Windows 任务栏的空位中"><br><br>**双击展开完整画面**<br><img src="docs/screenshots/windows-taskbar-expanded.png" width="334" alt="展开后的无边框画面，按横屏片源的原始比例显示"> |
+
 ## 快速开始
 
 1. 从发布页下载 `ShortDramaPlayer-win-x64.zip`，完整解压到可写目录。
