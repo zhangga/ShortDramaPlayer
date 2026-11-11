@@ -51,11 +51,13 @@ async function connect(url) {
       return result.result.value;
     },
     async click(button, clickCount) {
+      await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 15, y: 15 });
       for (const type of ['mousePressed', 'mouseReleased']) {
         await send('Input.dispatchMouseEvent', { type, x: 15, y: 15, button, clickCount });
       }
     },
     wheel: () => send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: 15, y: 15, deltaX: 0, deltaY: -100 }),
+    activate: () => send('Page.bringToFront'),
     close: () => socket.close()
   };
 }
@@ -120,10 +122,22 @@ async function verify(executable) {
       return overlay;
     };
     let overlay = await enter();
+    await overlay.activate();
     const size = () => overlay.evaluate('[innerWidth, innerHeight]');
     const paused = () => player.evaluate("document.getElementById('dock-test-video').paused");
+    await overlay.evaluate(`(() => {
+      window.dockSmokeEvents = [];
+      for (const name of ['pointerdown', 'pointerup', 'click']) {
+        document.addEventListener(name, event => dockSmokeEvents.push([name, event.target.tagName, event.detail]), true);
+      }
+    })()`);
     await overlay.click('left', 1);
-    await until(paused, 'single click to pause');
+    try {
+      await until(paused, 'single click to pause');
+    } catch (error) {
+      console.error('Dock overlay input:', await overlay.evaluate('JSON.stringify({ focus: document.hasFocus(), events: dockSmokeEvents, hit: document.elementFromPoint(15, 15)?.tagName })'));
+      throw error;
+    }
     await overlay.click('left', 1);
     await until(async () => !(await paused()), 'single click to resume');
     const expand = async () => {

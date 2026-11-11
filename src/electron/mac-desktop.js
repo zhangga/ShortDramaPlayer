@@ -242,8 +242,9 @@ function createMacDesktop(windowOptions, appUrl) {
         enqueue(leavePreview);
       });
       setPreviewLayout(current);
-      floating.showInactive();
       window.hide();
+      floating.show();
+      input.webContents.focus();
       current.timer = setInterval(() => refreshPreview(current), 1500);
     } catch (error) {
       if (!window.isDestroyed()) {
@@ -366,6 +367,7 @@ function createMacDesktop(windowOptions, appUrl) {
     updateMute();
     visible.show();
     visible.focus();
+    if (preview) preview.input.webContents.focus();
   }
 
   async function toggleHidden() {
