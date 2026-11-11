@@ -4,7 +4,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
-const { createBilibiliView, bilibiliURL } = require('./bilibili-view');
+const { createBilibiliView, bilibiliURL, isVideoPage } = require('./bilibili-view');
 const { findDock, dockPreviewBounds, expandedPreviewBounds, clamp, MIN_ZOOM, MAX_ZOOM, DEFAULT_ZOOM } = require('./dock-placement');
 
 const runFile = promisify(execFile);
@@ -36,6 +36,7 @@ function createMacDesktop(windowOptions, appUrl) {
 
   let bilibili;
   let browsing = false;
+  let navigationRevision = 0;
   let compact = false;
   let regularBounds;
   let wasMaximized = false;
@@ -97,12 +98,14 @@ function createMacDesktop(windowOptions, appUrl) {
     return browsing ? bilibili.pause() : contents.executeJavaScript(PAUSE);
   }
 
-  async function browseBilibili(input) {
+  function browseBilibili(input) {
     if (preview || (input && !bilibiliURL(input))) return;
     if (!bilibili) {
       bilibili = createBilibiliView(() => browsing, () => Boolean(preview));
-      bilibili.contents.on('did-navigate-in-page', (_event, _url, mainFrame) => {
-        if (mainFrame && preview) refreshPreview(preview);
+      bilibili.contents.on('did-navigate-in-page', (_event, url, mainFrame) => {
+        if (!mainFrame || !preview) return;
+        if (isVideoPage(url)) refreshPreview(preview);
+        else enqueue(leavePreview);
       });
     }
     if (!browsing) {
@@ -113,19 +116,20 @@ function createMacDesktop(windowOptions, appUrl) {
       layoutMain();
       contents.executeJavaScript(PAUSE).catch(console.error);
     }
-    try {
-      await bilibili.open(input);
-    } catch (error) {
-      if (!window.isDestroyed()) {
+    const revision = ++navigationRevision;
+    bilibili.open(input).catch(error => {
+      enqueue(async () => {
+        if (!browsing || preview || revision !== navigationRevision) return;
         console.error('Bilibili navigation:', error);
         await returnToPlayer();
         showMessage('无法打开 B 站页面，请重试。');
-      }
-    }
+      });
+    });
   }
 
   async function returnToPlayer() {
     if (!browsing || preview) return;
+    navigationRevision++;
     browsing = false;
     window.contentView.removeChildView(bilibili.view);
     state();
@@ -193,6 +197,18 @@ function createMacDesktop(windowOptions, appUrl) {
       return;
     }
     if (window.isDestroyed()) return;
+    if (window.isFullScreen()) {
+      await new Promise(resolve => {
+        const done = () => {
+          clearTimeout(timer);
+          window.removeListener('leave-full-screen', done);
+          resolve();
+        };
+        const timer = setTimeout(done, 2000);
+        window.once('leave-full-screen', done);
+        window.setFullScreen(false);
+      });
+    }
     await readDock();
     if (window.isDestroyed()) return;
     const dockDisplay = screen.getDisplayMatching(window.getBounds()).id;

@@ -39,22 +39,7 @@
       "icon": "build/icon.icns",
       "artifactName": "${name}-${version}-mac-${arch}.${ext}",
       "identity": "-",
-      "target": [
-        {
-          "target": "dmg",
-          "arch": [
-            "arm64",
-            "x64"
-          ]
-        },
-        {
-          "target": "zip",
-          "arch": [
-            "arm64",
-            "x64"
-          ]
-        }
-      ],
+      "target": ["dmg", "zip"],
       "hardenedRuntime": false,
       "gatekeeperAssess": false
     },

@@ -46,6 +46,14 @@ jobs:
           test "$(lipo -archs "$app/Contents/Resources/dock-helper/dock-geometry")" = arm64
           "$app/Contents/Resources/dock-helper/dock-geometry"
           "$app/Contents/Resources/bytevc2/ffmpeg" -hide_banner -decoders | grep ' bvc2 '
+          staging="$(mktemp -d)"
+          mkdir "$staging/dmg" "$staging/zip"
+          hdiutil attach -readonly -nobrowse -mountpoint "$staging/dmg" dist-electron/ShortDramaPlayer-mac-arm64.dmg
+          trap 'hdiutil detach "$staging/dmg"' EXIT
+          ditto -x -k dist-electron/ShortDramaPlayer-mac-arm64.zip "$staging/zip"
+          for format in dmg zip; do
+            test "$(lipo -archs "$staging/$format/短剧小窗.app/Contents/MacOS/短剧小窗")" = arm64
+          done
           (cd dist-electron && shasum -a 256 ShortDramaPlayer-mac-arm64.dmg ShortDramaPlayer-mac-arm64.zip > SHA256SUMS-mac-arm64.txt)
       - name: Launch the app and exercise the Dock preview
         run: node test/verify-macos-dock.js 'dist-electron/mac-arm64/短剧小窗.app/Contents/MacOS/短剧小窗'
