@@ -1398,9 +1398,48 @@ createApp({
     }
 
     function taskbarCommand(command) {
-      if (command === 'fit') document.documentElement.classList.add('taskbar-fit');
-      else if (command === 'zoom-in' || command === 'max') document.documentElement.classList.remove('taskbar-fit');
       window.chrome?.webview?.postMessage('taskbar:' + command);
+    }
+
+    let taskbarDrag = null;
+    let taskbarWasDragged = false;
+
+    function handleTaskbarClick(event) {
+      if (event.detail === 0) taskbarCommand('toggle');
+      else if (event.detail === 1 && !taskbarWasDragged) taskbarCommand('click');
+    }
+
+    function handleTaskbarDoubleClick() {
+      if (!taskbarWasDragged) taskbarCommand('toggle');
+    }
+
+    function startTaskbarDrag(event) {
+      if (event.button !== 0) return;
+      taskbarDrag = null;
+      taskbarWasDragged = false;
+      if (event.pointerType !== 'mouse' || !document.documentElement.classList.contains('taskbar-expanded')) return;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      taskbarDrag = { pointerId: event.pointerId, x: event.screenX, y: event.screenY };
+      taskbarCommand('drag-start');
+    }
+
+    function moveTaskbarDrag(event) {
+      if (taskbarDrag?.pointerId !== event.pointerId || !(event.buttons & 1)) return;
+      if (!taskbarWasDragged && Math.hypot(event.screenX - taskbarDrag.x, event.screenY - taskbarDrag.y) < 4) return;
+      taskbarWasDragged = true;
+      taskbarCommand('drag-move');
+    }
+
+    function finishTaskbarDrag(event) {
+      if (taskbarDrag?.pointerId !== event.pointerId) return;
+      taskbarDrag = null;
+      taskbarCommand('drag-end');
+    }
+
+    function handleTaskbarMessage(event) {
+      if (event.data === 'taskbar:play' && document.documentElement.classList.contains('taskbar-preview')) {
+        togglePlay();
+      }
     }
 
     function zoomTaskbarFromWheel(event) {
@@ -1806,6 +1845,19 @@ createApp({
       if (isTextEditingTarget(e.target)) return;
       if (e.target?.tagName === 'SELECT') return;
 
+      if (window.chrome?.webview && document.documentElement.classList.contains('taskbar-preview')) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          taskbarCommand('back');
+          return;
+        }
+        if (e.key === 'Home' || e.key === 'End') {
+          e.preventDefault();
+          taskbarCommand(e.key === 'Home' ? 'fit' : 'max');
+          return;
+        }
+      }
+
       if ((e.code === 'Escape' || e.key === 'Escape') && showSpeedMenu.value) { showSpeedMenu.value = false; e.preventDefault(); return; }
       if (e.code === 'Escape' || e.key === 'Escape') {
         if (showAppMenu.value) {
@@ -1919,6 +1971,7 @@ createApp({
       loadPreferences();
       loadSearchHistory();
       loadCatalog();
+      window.chrome?.webview?.addEventListener('message', handleTaskbarMessage);
       window.addEventListener('keydown', handleKeyDown);
       window.addEventListener('click', handleGlobalClick);
       window.addEventListener('mousemove', handleWindowMouseMove);
@@ -1944,6 +1997,7 @@ createApp({
       compactViewport?.removeEventListener?.('change', collapseCompactSidebar);
       bytevc2Session?.stop();
       stopDanmakuAnimation();
+      window.chrome?.webview?.removeEventListener('message', handleTaskbarMessage);
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('click', handleGlobalClick);
       window.removeEventListener('mousemove', handleWindowMouseMove);
@@ -2020,7 +2074,8 @@ createApp({
       onTimeUpdate,
       onEnded,
       onVideoError,
-      retryCurrentEpisode, taskbarCommand, zoomTaskbarFromWheel,
+      retryCurrentEpisode, taskbarCommand, handleTaskbarClick, handleTaskbarDoubleClick, zoomTaskbarFromWheel,
+      startTaskbarDrag, moveTaskbarDrag, finishTaskbarDrag,
       formatTime,
       isEpisodeWatched,
       onImageError,

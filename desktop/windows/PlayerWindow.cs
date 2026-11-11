@@ -18,6 +18,9 @@ internal sealed class PlayerWindow : Form
     private const int HotkeyId = 1;
     private const int WmHotkey = 0x0312;
     private const uint CtrlAltNoRepeat = 0x4003;
+    private const double MinimumExpandedZoom = 0.10;
+    private const double DefaultExpandedZoom = 0.40;
+    private const double MaximumExpandedZoom = 0.65;
     private readonly WebView2 browser = new WebView2();
     private readonly Button sizeButton = new Button();
     private readonly Button taskbarButton = new Button();
@@ -25,6 +28,7 @@ internal sealed class PlayerWindow : Form
     private readonly Label loading = new Label();
     private readonly FlowLayoutPanel toolbar = new FlowLayoutPanel();
     private readonly System.Windows.Forms.Timer taskbarTimer = new System.Windows.Forms.Timer { Interval = 1500 };
+    private readonly System.Windows.Forms.Timer taskbarClickTimer = new System.Windows.Forms.Timer();
     private Process service;
     private Uri home;
     private bool hotkeyRegistered;
@@ -34,11 +38,17 @@ internal sealed class PlayerWindow : Form
     private FormWindowState lastVisibleState;
     private bool wasMinimized;
     private bool inTaskbar;
+    private bool taskbarExpanded;
     private bool taskbarBusy;
     private Rectangle compactBounds;
     private Rectangle taskbarSlot;
     private double taskbarAspect = 9.0 / 16.0;
-    private double taskbarZoom = 3;
+    private double taskbarStripZoom = 3;
+    private double taskbarExpandedZoom;
+    private double rememberedExpandedZoom = DefaultExpandedZoom;
+    private string expandedZoomPath;
+    private Point? expandedLocation;
+    private Point? taskbarDragOffset;
 
     [STAThread]
     private static void Main()
@@ -101,7 +111,7 @@ internal sealed class PlayerWindow : Form
         toolbar.Controls.Add(sizeButton);
 
         taskbarButton.Text = "任务栏(&T)";
-        taskbarButton.AccessibleName = "把播放预览放到任务栏";
+        taskbarButton.AccessibleName = "在任务栏空位中播放";
         taskbarButton.Size = new Size(92, 30);
         taskbarButton.Margin = new Padding(0, 0, 12, 0);
         taskbarButton.BackColor = sizeButton.BackColor;
@@ -120,6 +130,13 @@ internal sealed class PlayerWindow : Form
         Shown += Initialize;
         Resize += HandleResize;
         taskbarTimer.Tick += async delegate { await RefreshTaskbar(); };
+        taskbarClickTimer.Tick += delegate
+        {
+            taskbarClickTimer.Stop();
+            CoreWebView2 core = browser.CoreWebView2;
+            if (inTaskbar && WindowState != FormWindowState.Minimized && core != null)
+                core.PostWebMessageAsString("taskbar:play");
+        };
     }
 
     private async void Initialize(object sender, EventArgs args)
@@ -136,6 +153,8 @@ internal sealed class PlayerWindow : Form
             string root = AppDomain.CurrentDomain.BaseDirectory;
             string data = Path.Combine(root, "data");
             Directory.CreateDirectory(data);
+            expandedZoomPath = Path.Combine(data, "taskbar-expanded-zoom.txt");
+            rememberedExpandedZoom = ReadExpandedZoom();
             int port = await StartService(root, data);
             if (IsDisposed) return;
             home = new Uri("http://127.0.0.1:" + port + "/");
@@ -172,9 +191,38 @@ internal sealed class PlayerWindow : Form
             };
             core.WebMessageReceived += async delegate(object _, CoreWebView2WebMessageReceivedEventArgs message)
             {
-                if (!inTaskbar || !IsLocal(message.Source)) return;
-                if (message.WebMessageAsJson == "\"taskbar:expand\"") await LeaveTaskbar();
-                else AdjustTaskbarZoom(message.WebMessageAsJson);
+                if (!inTaskbar || WindowState == FormWindowState.Minimized || !IsLocal(message.Source)) return;
+                string command = message.WebMessageAsJson;
+                switch (command)
+                {
+                    case "\"taskbar:click\"":
+                        taskbarClickTimer.Stop();
+                        taskbarClickTimer.Interval = SystemInformation.DoubleClickTime;
+                        taskbarClickTimer.Start();
+                        break;
+                    case "\"taskbar:toggle\"":
+                        await ToggleTaskbarPreview();
+                        break;
+                    case "\"taskbar:exit\"":
+                        await LeaveTaskbar();
+                        break;
+                    case "\"taskbar:back\"":
+                        if (taskbarExpanded) await ToggleTaskbarPreview();
+                        else await LeaveTaskbar();
+                        break;
+                    case "\"taskbar:drag-start\"":
+                        if (taskbarExpanded) taskbarDragOffset = Cursor.Position - new Size(Location);
+                        break;
+                    case "\"taskbar:drag-move\"":
+                        MoveExpandedPreview(Cursor.Position);
+                        break;
+                    case "\"taskbar:drag-end\"":
+                        taskbarDragOffset = null;
+                        break;
+                    default:
+                        await AdjustTaskbarZoom(command);
+                        break;
+                }
             };
             core.IsMuted = WindowState == FormWindowState.Minimized;
             browser.Source = home;
@@ -285,10 +333,10 @@ internal sealed class PlayerWindow : Form
             FormBorderStyle = FormBorderStyle.None;
             toolbar.Visible = false;
             inTaskbar = true;
+            taskbarExpanded = false;
             PlaceTaskbar(slot);
-            await browser.CoreWebView2.ExecuteScriptAsync(
-                "document.documentElement.classList.add('taskbar-preview'); document.documentElement.classList.toggle('taskbar-fit', "
-                + (taskbarZoom == 1 ? "true" : "false") + "); document.querySelector('.taskbar-strip-button')?.focus()");
+            await UpdateTaskbarView();
+            await browser.CoreWebView2.ExecuteScriptAsync("document.querySelector('.taskbar-preview-button')?.focus()");
             if (!IsDisposed && inTaskbar) taskbarTimer.Start();
         }
         catch (InvalidOperationException)
@@ -343,32 +391,136 @@ internal sealed class PlayerWindow : Form
             && aspect > 0 && !double.IsInfinity(aspect) ? aspect : taskbarAspect;
     }
 
-    private void AdjustTaskbarZoom(string command)
+    private async Task ToggleTaskbarPreview()
     {
-        double maximum = Math.Max(1, taskbarSlot.Width / (taskbarSlot.Height * taskbarAspect));
-        double current = Math.Min(taskbarZoom, maximum);
+        taskbarClickTimer.Stop();
+        taskbarDragOffset = null;
+        expandedLocation = null;
+        taskbarExpanded = !taskbarExpanded;
+        if (taskbarExpanded) taskbarExpandedZoom = rememberedExpandedZoom;
+        PlaceTaskbar(taskbarSlot);
+        await UpdateTaskbarView();
+    }
+
+    private void MoveExpandedPreview(Point cursor)
+    {
+        if (!taskbarExpanded || !taskbarDragOffset.HasValue) return;
+        taskbarClickTimer.Stop();
+        expandedLocation = cursor - new Size(taskbarDragOffset.Value);
+        PlaceTaskbar(taskbarSlot);
+    }
+
+    private async Task AdjustTaskbarZoom(string command)
+    {
+        double minimum = taskbarExpanded ? MinimumExpandedZoom : 1;
+        double maximum = taskbarExpanded ? MaximumExpandedZoom : Math.Max(1, taskbarSlot.Width / (taskbarSlot.Height * taskbarAspect));
+        double zoom = Math.Min(maximum, taskbarExpanded ? taskbarExpandedZoom : taskbarStripZoom);
+        bool fromWheel = false;
         switch (command)
         {
-            case "\"taskbar:zoom-in\"": taskbarZoom = Math.Min(maximum, current * 1.35); break;
-            case "\"taskbar:zoom-out\"": taskbarZoom = Math.Max(1, current / 1.35); break;
-            case "\"taskbar:max\"": taskbarZoom = double.PositiveInfinity; break;
-            case "\"taskbar:fit\"": taskbarZoom = 1; break;
+            case "\"taskbar:zoom-in\"":
+                zoom = Math.Min(maximum, zoom * 1.35);
+                fromWheel = true;
+                break;
+            case "\"taskbar:zoom-out\"":
+                zoom = Math.Max(minimum, zoom / 1.35);
+                fromWheel = true;
+                break;
+            case "\"taskbar:max\"": zoom = taskbarExpanded ? maximum : double.PositiveInfinity; break;
+            case "\"taskbar:fit\"": zoom = taskbarExpanded ? DefaultExpandedZoom : minimum; break;
             default: return;
         }
+        if (taskbarExpanded)
+        {
+            taskbarExpandedZoom = zoom;
+            if (fromWheel) RememberExpandedZoom(zoom);
+        }
+        else taskbarStripZoom = zoom;
         PlaceTaskbar(taskbarSlot);
+        if (!taskbarExpanded) await UpdateTaskbarView();
+    }
+
+    private double ReadExpandedZoom()
+    {
+        try
+        {
+            double zoom;
+            if (double.TryParse(File.ReadAllText(expandedZoomPath), NumberStyles.Float, CultureInfo.InvariantCulture, out zoom)
+                && zoom >= MinimumExpandedZoom && zoom <= MaximumExpandedZoom)
+            {
+                return zoom;
+            }
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+        return DefaultExpandedZoom;
+    }
+
+    private void RememberExpandedZoom(double zoom)
+    {
+        if (zoom == rememberedExpandedZoom) return;
+        rememberedExpandedZoom = zoom;
+
+        try
+        {
+            string pending = expandedZoomPath + ".tmp";
+            File.WriteAllText(pending, zoom.ToString("R", CultureInfo.InvariantCulture));
+            if (File.Exists(expandedZoomPath)) File.Replace(pending, expandedZoomPath, null);
+            else File.Move(pending, expandedZoomPath);
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
     }
 
     private void PlaceTaskbar(Rectangle slot)
     {
         taskbarSlot = slot;
-        int width = Math.Max(1, (int)Math.Round(Math.Min(slot.Width, slot.Height * taskbarAspect * taskbarZoom)));
-        SetWindowPos(Handle, new IntPtr(-1), slot.Right - width, slot.Top, width, slot.Height, 0x10);
+        if (taskbarExpanded)
+        {
+            Rectangle area = Screen.FromRectangle(slot).WorkingArea;
+            Rectangle target = TaskbarPlacement.FitAbove(area, slot, taskbarAspect, taskbarExpandedZoom);
+            if (expandedLocation.HasValue)
+            {
+                Point location = expandedLocation.Value;
+                target.Location = new Point(
+                    Math.Max(area.Left, Math.Min(area.Right - target.Width, location.X)),
+                    Math.Max(area.Top, Math.Min(area.Bottom - target.Height, location.Y)));
+                expandedLocation = target.Location;
+            }
+            if (Bounds != target) Bounds = target;
+        }
+        else
+        {
+            int width = Math.Max(1, (int)Math.Round(Math.Min(slot.Width, slot.Height * taskbarAspect * taskbarStripZoom)));
+            SetWindowPos(Handle, new IntPtr(-1), slot.Right - width, slot.Top, width, slot.Height, 0x10);
+        }
+    }
+
+    private async Task UpdateTaskbarView()
+    {
+        string cropped = !taskbarExpanded && taskbarStripZoom > 1 ? "true" : "false";
+        string expanded = taskbarExpanded ? "true" : "false";
+        string action = taskbarExpanded ? "缩回任务栏" : "展开完整画面";
+        string dragHint = taskbarExpanded ? "，按住左键可拖动" : "";
+        try
+        {
+            await browser.CoreWebView2.ExecuteScriptAsync(
+                "(() => { const root = document.documentElement; root.classList.add('taskbar-preview'); " +
+                "root.classList.toggle('taskbar-cropped', " + cropped + "); " +
+                "root.classList.toggle('taskbar-expanded', " + expanded + "); " +
+                "const button = document.querySelector('.taskbar-preview-button'); if (!button) return; " +
+                "button.setAttribute('aria-label', '" + action + "'); " +
+                "button.title = '单击播放或暂停，双击" + action + "，右键返回小窗，滚轮缩放" + dragHint + "'; })()");
+        }
+        catch (InvalidOperationException) { }
     }
 
     private void RestoreCompactBounds()
     {
         inTaskbar = false;
+        taskbarDragOffset = null;
         taskbarTimer.Stop();
+        taskbarClickTimer.Stop();
         FormBorderStyle = FormBorderStyle.Sizable;
         MinimumSize = new Size(390, 500);
         Bounds = compactBounds;
@@ -382,7 +534,7 @@ internal sealed class PlayerWindow : Form
         try
         {
             await browser.CoreWebView2.ExecuteScriptAsync(
-                "document.documentElement.classList.remove('taskbar-preview', 'taskbar-fit'); document.querySelector('.player-container')?.focus()");
+                "document.documentElement.classList.remove('taskbar-preview', 'taskbar-cropped', 'taskbar-expanded'); document.querySelector('.player-container')?.focus()");
         }
         catch (InvalidOperationException) { }
     }
@@ -393,6 +545,11 @@ internal sealed class PlayerWindow : Form
         if (!minimized) lastVisibleState = WindowState;
         if (wasMinimized == minimized) return;
         wasMinimized = minimized;
+        if (minimized)
+        {
+            taskbarClickTimer.Stop();
+            taskbarDragOffset = null;
+        }
         CoreWebView2 core = browser.CoreWebView2;
         if (core == null) return;
         core.IsMuted = minimized;
@@ -423,6 +580,7 @@ internal sealed class PlayerWindow : Form
     protected override void OnFormClosed(FormClosedEventArgs args)
     {
         taskbarTimer.Dispose();
+        taskbarClickTimer.Dispose();
         if (hotkeyRegistered) UnregisterHotKey(Handle, HotkeyId);
         browser.Dispose();
         StopService();

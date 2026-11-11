@@ -259,6 +259,31 @@ test('clicking controls blurs them and maintains focus on .player-container', ()
   assert.equal(focused, container);
 });
 
+test('dragging the expanded taskbar preview suppresses click gestures', () => {
+  const messages = [];
+  const state = client(async () => response([]), {
+    document: { documentElement: { classList: { add() {}, contains: name => name === 'taskbar-expanded' } } },
+    window: { chrome: { webview: { postMessage: message => messages.push(message) } } }
+  });
+  const pointer = {
+    button: 0, buttons: 1, pointerType: 'mouse', pointerId: 1,
+    screenX: 100, screenY: 100, currentTarget: { setPointerCapture() {} }
+  };
+
+  state.startTaskbarDrag(pointer);
+  state.moveTaskbarDrag({ ...pointer, screenX: 102 });
+  state.finishTaskbarDrag(pointer);
+  state.handleTaskbarClick({ detail: 1 });
+  assert.deepEqual(messages.splice(0), ['taskbar:drag-start', 'taskbar:drag-end', 'taskbar:click']);
+
+  state.startTaskbarDrag(pointer);
+  state.moveTaskbarDrag({ ...pointer, screenX: 180 });
+  state.finishTaskbarDrag(pointer);
+  state.handleTaskbarClick({ detail: 1 });
+  state.handleTaskbarDoubleClick();
+  assert.deepEqual(messages, ['taskbar:drag-start', 'taskbar:drag-move', 'taskbar:drag-end']);
+});
+
 test('actor tab navigation, paging, profile modal and opening drama works', async () => {
   const requests = [];
   const state = client(async (url) => {

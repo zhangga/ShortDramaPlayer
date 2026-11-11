@@ -82,6 +82,16 @@ internal static class TaskbarPlacement
         return best.Width >= Math.Max(40, bar.Height) ? best : Rectangle.Empty;
     }
 
+    public static Rectangle FitAbove(Rectangle area, Rectangle slot, double aspect, double zoom)
+    {
+        double height = Math.Min(area.Height, area.Width / aspect) * zoom;
+        int pixelHeight = Math.Max(1, (int)Math.Round(height));
+        int pixelWidth = Math.Max(1, (int)Math.Round(height * aspect));
+        int right = Math.Min(area.Right, Math.Max(area.Left + pixelWidth, slot.Right));
+        int top = slot.Bottom <= area.Top ? area.Top : area.Bottom - pixelHeight;
+        return new Rectangle(right - pixelWidth, top, pixelWidth, pixelHeight);
+    }
+
     private static Condition Is(ControlType type)
     {
         return new PropertyCondition(AutomationElement.ControlTypeProperty, type);

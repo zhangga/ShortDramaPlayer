@@ -2981,7 +2981,7 @@ html.platform-win .app-header { padding-right: 160px; }
   outline: 2px solid var(--text-main);
   outline-offset: -2px;
 }
-.taskbar-strip-button { display: none; }
+.taskbar-preview-button { display: none; }
 
 html.taskbar-preview .app-header,
 html.taskbar-preview .player-header,
@@ -2996,10 +2996,10 @@ html.taskbar-preview .player-container { border: 0; }
 html.taskbar-preview .video-stage {
   pointer-events: none;
 }
-html.taskbar-preview .video-element { object-fit: cover; object-position: 50% 42%; }
-html.taskbar-preview.taskbar-fit .video-element { object-fit: contain; object-position: center; }
+html.taskbar-preview .video-element { object-fit: contain; }
+html.taskbar-preview.taskbar-cropped .video-element { object-fit: cover; object-position: 50% 42%; }
 
-html.taskbar-preview .taskbar-strip-button {
+html.taskbar-preview .taskbar-preview-button {
   position: absolute;
   inset: 0;
   display: block;
@@ -3008,7 +3008,9 @@ html.taskbar-preview .taskbar-strip-button {
   background: transparent;
   cursor: pointer;
 }
-html.taskbar-preview .taskbar-strip-button:focus-visible { outline: 2px solid var(--text-main); outline-offset: -2px; }
+html.taskbar-preview .taskbar-preview-button:focus-visible { outline: 2px solid var(--text-main); outline-offset: -2px; }
+html.taskbar-expanded .taskbar-preview-button { cursor: grab; }
+html.taskbar-expanded .taskbar-preview-button:active { cursor: grabbing; }
 
 @media (prefers-reduced-motion: reduce) { .skeleton-cover, .skeleton-line { animation: none; } }
 

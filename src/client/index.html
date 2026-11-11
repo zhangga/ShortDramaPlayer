@@ -355,12 +355,12 @@
           </div>
 
           <!-- 播放器控制条 -->
-          <button type="button" class="taskbar-strip-button"
-            aria-label="展开为竖屏小窗。Home 查看全画面，End 最大化任务栏预览"
-            title="滚轮缩放，右键拉满，单击展开"
-            @click="taskbarCommand('expand')" @keydown.esc.stop="taskbarCommand('expand')"
-            @wheel.prevent.stop="zoomTaskbarFromWheel" @contextmenu.prevent.stop="taskbarCommand('max')"
-            @keydown.end.prevent.stop="taskbarCommand('max')" @keydown.home.prevent.stop="taskbarCommand('fit')"></button>
+          <button type="button" class="taskbar-preview-button"
+            aria-label="展开完整画面"
+            @focusin.stop @click="handleTaskbarClick" @dblclick.prevent.stop="handleTaskbarDoubleClick"
+            @pointerdown="startTaskbarDrag" @pointermove="moveTaskbarDrag"
+            @pointerup="finishTaskbarDrag" @pointercancel="finishTaskbarDrag" @lostpointercapture="finishTaskbarDrag"
+            @wheel.prevent.stop="zoomTaskbarFromWheel" @contextmenu.prevent.stop="taskbarCommand('exit')"></button>
           <div class="player-controls" @pointerenter="clearControlsTimer" @pointerleave="resetControlsTimer">
             <!-- 进度条 -->
             <div class="progress-bar-container" :class="{ 'is-scrubbing': isScrubbing }" @pointermove="previewSeek" @pointerleave="showPreview = false">
