@@ -3,7 +3,7 @@ const desktop = window.shortDramaDesktop;
 const root = document.documentElement;
 const button = document.querySelector('button');
 const send = (command, point) => desktop.send('taskbar:' + command, point);
-const controls = createTaskbarControls(send, () => root.classList.contains('taskbar-expanded'));
+const controls = createTaskbarControls(send);
 
 button.addEventListener('click', controls.handleTaskbarClick);
 button.addEventListener('dblclick', controls.handleTaskbarDoubleClick);

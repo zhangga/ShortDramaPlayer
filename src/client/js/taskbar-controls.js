@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-function createTaskbarControls(send, isExpanded) {
+function createTaskbarControls(send, canDrag = () => true) {
   let drag = null;
   let wasDragged = false;
 
@@ -16,7 +16,7 @@ function createTaskbarControls(send, isExpanded) {
     if (event.button !== 0) return;
     drag = null;
     wasDragged = false;
-    if (event.pointerType !== 'mouse' || !isExpanded()) return;
+    if (event.pointerType !== 'mouse' || !canDrag()) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     drag = { pointerId: event.pointerId, x: event.screenX, y: event.screenY };
     send('drag-start', { x: event.screenX, y: event.screenY });

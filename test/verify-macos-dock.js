@@ -56,15 +56,17 @@ async function connect(url) {
         await send('Input.dispatchMouseEvent', { type, x: 15, y: 15, button, clickCount });
       }
     },
-    async drag() {
+    async drag(dx, dy) {
+      const x = 25;
+      const y = 40;
       const mouse = (type, x, y, button, buttons) =>
         send('Input.dispatchMouseEvent', { type, x, y, button, buttons, clickCount: 1 });
-      await mouse('mouseMoved', 70, 70, 'none', 0);
-      await mouse('mousePressed', 70, 70, 'left', 1);
-      await mouse('mouseMoved', 25, 35, 'none', 1);
-      await mouse('mouseReleased', 25, 35, 'left', 0);
+      await mouse('mouseMoved', x, y, 'none', 0);
+      await mouse('mousePressed', x, y, 'left', 1);
+      await mouse('mouseMoved', x + dx, y + dy, 'none', 1);
+      await mouse('mouseReleased', x + dx, y + dy, 'left', 0);
     },
-    wheel: () => send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: 15, y: 15, deltaX: 0, deltaY: -100 }),
+    wheel: (deltaY, deltaX = 0) => send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: 15, y: 15, deltaX, deltaY }),
     activate: () => send('Page.bringToFront'),
     close: () => socket.close()
   };
@@ -126,15 +128,34 @@ async function verify(executable) {
       await player.evaluate("document.querySelector('.mac-player-controls button:last-child').click()");
       const overlay = await page('/mac-preview.html');
       await until(() => player.evaluate("document.documentElement.classList.contains('taskbar-preview')"), 'preview mode');
-      await until(() => overlay.evaluate('innerHeight <= 104 && innerHeight > 0'), 'compact preview size');
+      await until(() => overlay.evaluate('Math.abs(innerWidth / innerHeight - 9 / 16) < 0.01'), 'portrait preview size');
       await overlay.activate();
-      // Wait for the new view's compositor to receive its first pointer input.
-      await overlay.wheel();
+      // Wait for compositor input with a horizontal wheel event that leaves the zoom alone.
+      await overlay.evaluate("document.addEventListener('wheel', () => window.dockSmokeReady = true, { once: true })");
+      await until(async () => {
+        await overlay.wheel(0, 100);
+        return overlay.evaluate('Boolean(window.dockSmokeReady)');
+      }, 'overlay pointer input');
       return overlay;
     };
     let overlay = await enter();
     const size = () => overlay.evaluate('[innerWidth, innerHeight]');
+    const position = () => overlay.evaluate('[screenX, screenY]');
+    const expanded = () => overlay.evaluate("document.documentElement.classList.contains('taskbar-expanded')");
     const paused = () => player.evaluate("document.getElementById('dock-test-video').paused");
+    const dragPreview = async label => {
+      const start = await position();
+      const moved = async () => {
+        const point = await position();
+        return point.some((value, index) => value !== start[index]) && point;
+      };
+      await overlay.drag(18, -20);
+      // A bottom Dock can leave space on only one side of the preview.
+      const firstMove = await until(moved, label, 1000).catch(() => null);
+      if (firstMove) return firstMove;
+      await overlay.drag(-18, -20);
+      return until(moved, label);
+    };
     await overlay.evaluate(`(() => {
       window.dockSmokeEvents = [];
       for (const name of ['pointerdown', 'pointerup', 'click']) {
@@ -150,25 +171,42 @@ async function verify(executable) {
     }
     await overlay.click('left', 1);
     await until(async () => !(await paused()), 'single click to resume');
-    const expand = async () => {
+
+    const [, initialHeight] = await size();
+    await overlay.wheel(-100);
+    const dockedSize = await until(async () => {
+      const next = await size();
+      return next[1] > initialHeight && next;
+    }, 'wheel zoom in while docked');
+    assert.ok(Math.abs(dockedSize[0] / dockedSize[1] - 9 / 16) < 0.01);
+    await overlay.wheel(100);
+    await until(async () => (await size())[1] < dockedSize[1], 'wheel zoom out while docked');
+    await overlay.wheel(-100);
+    await until(async () => (await size())[1] === dockedSize[1], 'restore docked test size');
+    const dockedPosition = await dragPreview('drag the docked preview');
+    assert.equal(await expanded(), false);
+
+    const toggle = async () => {
       await overlay.click('left', 1);
       await overlay.click('left', 2);
-      await until(() => overlay.evaluate("document.documentElement.classList.contains('taskbar-expanded')"), 'double click to expand');
-      await until(() => overlay.evaluate('innerHeight > 104'), 'expanded preview size');
+    };
+    const expand = async () => {
+      await toggle();
+      await until(expanded, 'double click to expand');
+      await until(async () => (await size())[1] > dockedSize[1], 'expanded preview size');
     };
     await expand();
     assert.equal(await paused(), false);
     const [width, height] = await size();
     assert.ok(Math.abs(width / height - 9 / 16) < 0.01);
-    await overlay.wheel();
+    await overlay.wheel(-100);
     await until(async () => (await size())[1] > height, 'wheel zoom');
     const remembered = await size();
-    const previousLocation = await overlay.evaluate('[screenX, screenY]');
-    await overlay.drag();
-    await until(async () => {
-      const [x, y] = await overlay.evaluate('[screenX, screenY]');
-      return x < previousLocation[0] && y < previousLocation[1];
-    }, 'drag the expanded preview');
+    await dragPreview('drag the expanded preview');
+    await toggle();
+    await until(async () => !(await expanded()) && (await size())[1] === dockedSize[1], 'double click to dock again');
+    assert.deepEqual(await size(), dockedSize);
+    assert.deepEqual(await position(), dockedPosition);
     const leave = async () => {
       // macOS can destroy the overlay on right-button press before CDP acknowledges release.
       const click = overlay.click('right', 1).catch(error => error);
@@ -180,10 +218,12 @@ async function verify(executable) {
     };
     await leave();
     overlay = await enter();
+    assert.deepEqual(await size(), dockedSize);
+    assert.deepEqual(await position(), dockedPosition);
     await expand();
     assert.deepEqual(await size(), remembered);
     await leave();
-    console.log('Verified packaged arm64 player, Dock preview, pause/play, full aspect, dragging, zoom memory, and right-click return.');
+    console.log('Verified packaged arm64 player, docked and expanded zoom and dragging, pause/play, and right-click return.');
   } catch (error) {
     console.error(output.slice(-12000));
     throw error;

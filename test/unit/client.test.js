@@ -186,14 +186,17 @@ test('Windows opens Bilibili in the desktop view and can send a video back to th
   assert.equal(messages.length, 2);
 });
 
-test('Windows opens the Douyin channel by default and ignores pending links when reopening it', async () => {
+for (const [platform, bridge] of Object.entries({
+  Windows: send => ({ chrome: { webview: { postMessage: send } } }),
+  macOS: send => ({ shortDramaDesktop: { send } })
+})) test(`${platform} opens the Douyin channel by default and ignores pending links when reopening it`, async () => {
   const messages = [];
   let finishLink;
   const state = client(async (url, options) => {
     if (url !== '/api/douyin/share-link') return response([]);
     assert.deepEqual(JSON.parse(options.body), { text: '复制打开抖音 https://v.douyin.com/Video/' });
     return new Promise(resolve => { finishLink = resolve; });
-  }, { window: { chrome: { webview: { postMessage: message => messages.push(message) } } } });
+  }, { window: bridge(message => messages.push(message)) });
   state.showDouyin();
   assert.equal(state.viewMode.value, 'douyin');
   const channel = 'douyin:browse:https://www.douyin.com/series';

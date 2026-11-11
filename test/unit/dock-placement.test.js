@@ -27,6 +27,36 @@ test('Dock preview moves above a wide Dock and clears a Dock on either side', ()
   assert.equal(dockPreviewBounds(rightDisplay, right, portrait).x, 1321);
 });
 
+test('Dock preview scales proportionally with its bottom still aligned', () => {
+  const dock = { x: 420, y: 834, width: 600, height: 60 };
+  assert.deepEqual(dockPreviewBounds(display, dock, portrait, 0.5), { x: 1026, y: 842, width: 29, height: 52 });
+  assert.deepEqual(dockPreviewBounds(display, dock, portrait, 2), { x: 1026, y: 686, width: 117, height: 208 });
+});
+
+test('dragging along a bottom Dock avoids its icons and the edge of the screen', () => {
+  const dock = { x: 420, y: 834, width: 600, height: 60 };
+  assert.deepEqual(dockPreviewBounds(display, dock, portrait, 1, { x: 550, y: 100 }),
+    { x: 355, y: 790, width: 59, height: 104 });
+  assert.deepEqual(dockPreviewBounds(display, dock, portrait, 1, { x: 1500, y: 100 }),
+    { x: 1375, y: 790, width: 59, height: 104 });
+  const wideDock = { ...dock, x: 24, width: 1392 };
+  assert.deepEqual(dockPreviewBounds(display, wideDock, 16 / 9, 1, { x: 200, y: 100 }),
+    { x: 200, y: 744, width: 150, height: 84 });
+  assert.deepEqual(dockPreviewBounds(display, undefined, portrait, 1, { x: 200, y: 100 }),
+    { x: 200, y: 724, width: 59, height: 104 });
+});
+
+test('dragging along a side Dock changes only the vertical position', () => {
+  const left = { x: 4, y: 300, width: 50, height: 400 };
+  const right = { ...left, x: 1386 };
+  const leftDisplay = { ...display, workArea: { x: 58, y: 24, width: 1382, height: 876 } };
+  const rightDisplay = { ...display, workArea: { x: 0, y: 24, width: 1382, height: 876 } };
+  assert.deepEqual(dockPreviewBounds(leftDisplay, left, portrait, 1, { x: 400, y: 150 }),
+    { x: 60, y: 150, width: 59, height: 104 });
+  assert.deepEqual(dockPreviewBounds(rightDisplay, right, portrait, 1, { x: 400, y: -10 }),
+    { x: 1321, y: 24, width: 59, height: 104 });
+});
+
 test('Dock detection ignores windows for other displays and hidden edge strips', () => {
   const hidden = { x: 0, y: 898, width: 1440, height: 2 };
   const otherDisplay = { x: -1200, y: 850, width: 600, height: 50 };

@@ -9,7 +9,7 @@ document.documentElement.classList.add(isDesktop ? (isMac ? 'platform-mac' : /Wi
 createApp({
   setup() {
     const macDesktop = window.shortDramaDesktop;
-    const windowsDesktop = !macDesktop && Boolean(window.chrome?.webview);
+    const desktopSites = Boolean(macDesktop || window.chrome?.webview);
     const desktopState = ref({ compact: false, browsing: false, shortcut: false });
     const desktopCommand = message => {
       if (macDesktop) macDesktop.send(message);
@@ -721,6 +721,7 @@ createApp({
     }
 
     function goHome() {
+      if (desktopState.value.browsing) desktopCommand('site:return');
       switchTab('hot-drama');
     }
 
@@ -730,7 +731,7 @@ createApp({
     }
 
     function showDouyin() {
-      if (!windowsDesktop) return;
+      if (!desktopSites) return;
       if (viewMode.value !== 'douyin') {
         leaveTheater();
         closeActorDetail();
@@ -747,7 +748,7 @@ createApp({
     }
 
     async function openDouyinVideo() {
-      if (!windowsDesktop || viewMode.value !== 'douyin' || douyinLoading.value) return;
+      if (!desktopSites || viewMode.value !== 'douyin' || douyinLoading.value) return;
       const request = ++douyinRequest;
       douyinError.value = '';
       douyinLoading.value = true;
@@ -2192,7 +2193,7 @@ createApp({
       switchTab,
       changePage,
       goHome,
-      macDesktop, windowsDesktop, desktopState, desktopCommand,
+      macDesktop, desktopSites, desktopState, desktopCommand,
       showDouyin, browseDouyin, openDouyinVideo, douyinInput, douyinError, douyinLoading,
       showBilibili, openBilibiliSiteLink, openBilibiliVideo, bilibiliInput, bilibiliInputEl, bilibiliVideo, bilibiliError, bilibiliLoading,
       openTheater,

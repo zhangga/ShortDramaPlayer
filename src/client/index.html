@@ -11,7 +11,7 @@
 <body class="dark-theme">
   <div id="app">
     <!-- 顶部导航栏 -->
-    <header class="app-header" :class="{ 'mac-bilibili-header': desktopState.browsing }">
+    <header class="app-header" :class="{ 'mac-site-header': desktopState.browsing }">
       <div class="header-left">
         <div class="brand" @click="goHome" title="返回首页">
           <img class="brand-icon" src="/assets/app-icon.png" alt="" width="28" height="28" aria-hidden="true">
@@ -29,7 +29,7 @@
       </div>
 
       <div class="header-right">
-        <div v-if="viewMode !== 'bilibili' && viewMode !== 'douyin'" class="search-box" :class="{ 'has-query': searchKeyword.trim() }" @focusout="onSearchFocusOut" @keydown.esc="showSearchHistory = false">
+        <div v-if="!desktopState.browsing && viewMode !== 'bilibili' && viewMode !== 'douyin'" class="search-box" :class="{ 'has-query': searchKeyword.trim() }" @focusout="onSearchFocusOut" @keydown.esc="showSearchHistory = false">
           <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
           <input 
             type="text" 
@@ -54,17 +54,17 @@
         </div>
 
         <button v-if="!desktopState.browsing" type="button" class="site-entry site-entry-bilibili"
-          :aria-pressed="viewMode === 'bilibili'" @click="showBilibili">
+          aria-label="哔哩哔哩" title="哔哩哔哩" :aria-pressed="viewMode === 'bilibili'" @click="showBilibili">
           <img src="/assets/bilibili-icon.png" alt="" width="20" height="20">
           哔哩哔哩
         </button>
-        <button v-if="windowsDesktop" type="button" class="site-entry site-entry-douyin"
-          :aria-pressed="viewMode === 'douyin'" @click="showDouyin">
+        <button v-if="desktopSites && !desktopState.browsing" type="button" class="site-entry site-entry-douyin"
+          aria-label="抖音" title="抖音" :aria-pressed="viewMode === 'douyin'" @click="showDouyin">
           <img src="/assets/douyin-icon.png" alt="" width="20" height="20">
           抖音
         </button>
         <div v-if="macDesktop" class="mac-player-controls">
-          <button v-if="desktopState.browsing" type="button" class="nav-item" @click="desktopCommand('bilibili:return')">返回播放器</button>
+          <button v-if="desktopState.browsing" type="button" class="nav-item" @click="desktopCommand('site:return')">返回播放器</button>
           <button type="button" class="nav-item" @click="desktopCommand('window:compact')">{{ desktopState.compact ? '大窗' : '小窗' }}</button>
           <button type="button" class="nav-item" @click="desktopCommand('window:dock')"
             :title="desktopState.shortcut ? '⌃⌥F9 收起 / 恢复' : '贴着 Dock 播放'">贴 Dock</button>

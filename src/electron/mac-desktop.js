@@ -4,8 +4,11 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
-const { createBilibiliView, bilibiliURL, isVideoPage } = require('./bilibili-view');
-const { findDock, dockPreviewBounds, expandedPreviewBounds, clamp, MIN_ZOOM, MAX_ZOOM, DEFAULT_ZOOM } = require('./dock-placement');
+const { sites, siteURL, createSiteView } = require('./site-view');
+const {
+  findDock, dockPreviewBounds, expandedPreviewBounds, clamp,
+  MIN_DOCK_SCALE, MAX_DOCK_SCALE, DEFAULT_DOCK_SCALE, MIN_ZOOM, MAX_ZOOM, DEFAULT_ZOOM
+} = require('./dock-placement');
 
 const runFile = promisify(execFile);
 const HEADER_HEIGHT = 60;
@@ -16,6 +19,26 @@ const PAUSE = "document.querySelectorAll('video, audio').forEach(media => media.
 const ASPECT = "(() => { const video = document.querySelector('.theater-view video.video-element'); return video?.videoHeight ? video.videoWidth / video.videoHeight : null; })()";
 const LOCAL_VIEW = { sandbox: true, contextIsolation: true, nodeIntegration: false, preload: path.join(__dirname, 'mac-preload.js') };
 
+function loadPreviewSize(file, fallback, min, max) {
+  try {
+    const value = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (Number.isFinite(value)) return clamp(value, min, max);
+  } catch (error) {
+    if (error.code !== 'ENOENT') console.warn('Unable to load Dock preview size:', error.message);
+  }
+  return fallback;
+}
+
+function savePreviewSize(file, value) {
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file + '.tmp', JSON.stringify(value));
+    fs.renameSync(file + '.tmp', file);
+  } catch (error) {
+    console.warn('Unable to save Dock preview size:', error.message);
+  }
+}
+
 function createMacDesktop(windowOptions, appUrl) {
   const { webPreferences, ...options } = windowOptions;
   const window = new BaseWindow(options);
@@ -25,17 +48,15 @@ function createMacDesktop(windowOptions, appUrl) {
 
   const helper = app.isPackaged ? path.join(process.resourcesPath, 'dock-helper/dock-geometry') :
     path.join(__dirname, '../../build/dock-helper', process.arch, 'dock-geometry');
-  const zoomFile = path.join(app.getPath('userData'), 'dock-expanded-zoom.json');
-  let zoom = DEFAULT_ZOOM;
-  try {
-    const value = JSON.parse(fs.readFileSync(zoomFile, 'utf8'));
-    if (Number.isFinite(value)) zoom = clamp(value, MIN_ZOOM, MAX_ZOOM);
-  } catch (error) {
-    if (error.code !== 'ENOENT') console.warn('Unable to load Dock preview size:', error.message);
-  }
+  const userData = app.getPath('userData');
+  const zoomFile = path.join(userData, 'dock-expanded-zoom.json');
+  const dockScaleFile = path.join(userData, 'dock-preview-scale.json');
+  let zoom = loadPreviewSize(zoomFile, DEFAULT_ZOOM, MIN_ZOOM, MAX_ZOOM);
+  let dockScale = loadPreviewSize(dockScaleFile, DEFAULT_DOCK_SCALE, MIN_DOCK_SCALE, MAX_DOCK_SCALE);
+  let dockLocation;
 
-  let bilibili;
-  let browsing = false;
+  const siteViews = new Map();
+  let browsingSite;
   let navigationRevision = 0;
   let compact = false;
   let regularBounds;
@@ -53,7 +74,7 @@ function createMacDesktop(windowOptions, appUrl) {
   };
 
   const state = () => {
-    if (!contents.isDestroyed()) contents.send(STATE, { compact, browsing, shortcut: shortcutRegistered });
+    if (!contents.isDestroyed()) contents.send(STATE, { compact, browsing: Boolean(browsingSite), shortcut: shortcutRegistered });
   };
   contents.on('did-finish-load', state);
 
@@ -61,8 +82,8 @@ function createMacDesktop(windowOptions, appUrl) {
     if (window.isDestroyed()) return;
     const [width, height] = window.getContentSize();
     if (preview?.source !== player) player.setBounds({ x: 0, y: 0, width, height });
-    if (bilibili && preview?.source !== bilibili.view) {
-      bilibili.view.setBounds({ x: 0, y: HEADER_HEIGHT, width, height: Math.max(0, height - HEADER_HEIGHT) });
+    if (browsingSite && preview?.site !== browsingSite) {
+      browsingSite.view.setBounds({ x: 0, y: HEADER_HEIGHT, width, height: Math.max(0, height - HEADER_HEIGHT) });
     }
   }
   window.on('resize', layoutMain);
@@ -90,51 +111,67 @@ function createMacDesktop(windowOptions, appUrl) {
   }
 
   function updateMute() {
-    contents.setAudioMuted(hidden || browsing);
-    bilibili?.contents.setAudioMuted(hidden || !browsing);
+    contents.setAudioMuted(hidden || Boolean(browsingSite));
+    for (const site of siteViews.values()) site.contents.setAudioMuted(hidden || browsingSite !== site);
   }
 
   function pause() {
-    return browsing ? bilibili.pause() : contents.executeJavaScript(PAUSE);
+    return browsingSite ? browsingSite.pause() : contents.executeJavaScript(PAUSE);
   }
 
-  function browseBilibili(input) {
-    if (preview || (input && !bilibiliURL(input))) return;
-    if (!bilibili) {
-      bilibili = createBilibiliView(() => browsing, () => Boolean(preview));
-      bilibili.contents.on('did-navigate-in-page', (_event, url, mainFrame) => {
-        if (!mainFrame || !preview) return;
-        if (isVideoPage(url)) refreshPreview(preview);
-        else enqueue(leavePreview);
+  function setBrowsingSite(site) {
+    if (browsingSite === site) return;
+    if (browsingSite) window.contentView.removeChildView(browsingSite.view);
+    browsingSite = site;
+    if (site) window.contentView.addChildView(site.view);
+    state();
+    updateMute();
+    layoutMain();
+  }
+
+  function browseSite(name, input) {
+    const definition = sites[name];
+    if (preview || (input && !siteURL(definition, input))) return;
+    let site = siteViews.get(name);
+    if (!site) {
+      site = createSiteView(definition, () => browsingSite === site, () => preview?.site === site);
+      siteViews.set(name, site);
+      site.contents.on('did-navigate-in-page', (_event, url, mainFrame) => {
+        const current = preview;
+        if (!mainFrame || current?.site !== site) return;
+        if (site.canPreview(url)) refreshPreview(current);
+        else enqueue(() => leavePreview(current));
+      });
+      site.contents.on('did-navigate', () => {
+        const current = preview;
+        if (current?.site === site) enqueue(() => leavePreview(current));
       });
     }
-    if (!browsing) {
-      browsing = true;
-      state();
-      updateMute();
-      window.contentView.addChildView(bilibili.view);
-      layoutMain();
-      contents.executeJavaScript(PAUSE).catch(console.error);
-    }
+
+    const previous = browsingSite;
+    setBrowsingSite(site);
+    if (previous !== site) (previous ? previous.pause() : contents.executeJavaScript(PAUSE)).catch(console.error);
+
     const revision = ++navigationRevision;
-    bilibili.open(input).catch(error => {
+    const isCurrent = () => !window.isDestroyed() && browsingSite === site && !preview && revision === navigationRevision;
+    site.open(input).then(() => {
+      if (isCurrent() && !hidden) site.contents.focus();
+    }).catch(error => {
       enqueue(async () => {
-        if (!browsing || preview || revision !== navigationRevision) return;
-        console.error('Bilibili navigation:', error);
+        if (!isCurrent()) return;
+        console.error(`${site.title} navigation:`, error);
         await returnToPlayer();
-        showMessage('无法打开 B 站页面，请重试。');
+        if (!window.isDestroyed()) showMessage(`无法打开${site.title}页面，请重试。`);
       });
     });
   }
 
   async function returnToPlayer() {
-    if (!browsing || preview) return;
+    const site = browsingSite;
+    if (!site || preview) return;
     navigationRevision++;
-    browsing = false;
-    window.contentView.removeChildView(bilibili.view);
-    state();
-    updateMute();
-    await bilibili.pause();
+    setBrowsingSite(null);
+    await site.pause().catch(console.error);
     if (!window.isDestroyed()) contents.focus();
   }
 
@@ -156,7 +193,9 @@ function createMacDesktop(windowOptions, appUrl) {
     if (current !== preview || current.window.isDestroyed()) return;
     const display = screen.getAllDisplays().find(display => display.id === current.dockDisplay) ??
       screen.getDisplayMatching(current.window.getBounds());
-    current.anchor = dockPreviewBounds(display, findDock(display.bounds, dock.windows), current.aspect);
+    current.dockDisplay = display.id;
+    const attachedLocation = dockLocation?.displayId === display.id ? dockLocation : undefined;
+    current.anchor = dockPreviewBounds(display, findDock(display.bounds, dock.windows), current.aspect, dockScale, attachedLocation);
     const targetDisplay = current.location ? screen.getDisplayNearestPoint(current.location) : display;
     const bounds = current.expanded ?
       expandedPreviewBounds(targetDisplay.workArea, current.anchor, current.aspect, zoom, current.location) : current.anchor;
@@ -177,10 +216,10 @@ function createMacDesktop(windowOptions, appUrl) {
     current.refreshing = true;
     try {
       if (!current.expanded) await readDock();
-      const aspect = browsing ? await bilibili.aspect(true) : await contents.executeJavaScript(ASPECT);
+      const aspect = current.site ? await current.site.aspect(true) : await contents.executeJavaScript(ASPECT);
       if (current !== preview) return;
       if (Number.isFinite(aspect) && aspect > 0) current.aspect = aspect;
-      else if (!browsing) return enqueue(leavePreview);
+      else if (!current.site?.keepPreviewWhenVideoMissing) return enqueue(() => leavePreview(current));
       if (!current.drag) updatePreviewBounds(current);
     } catch (error) {
       if (current === preview) console.warn('Dock preview refresh:', error.message);
@@ -191,9 +230,10 @@ function createMacDesktop(windowOptions, appUrl) {
 
   async function enterPreview() {
     if (preview) return;
-    const aspect = browsing ? await bilibili.aspect() : await contents.executeJavaScript(ASPECT);
+    const site = browsingSite;
+    const aspect = site ? await site.aspect() : await contents.executeJavaScript(ASPECT);
     if (!Number.isFinite(aspect) || aspect <= 0) {
-      showMessage('请先播放红果短剧、B 站视频或直播，再点「贴 Dock」。');
+      showMessage('请先播放视频，再点「贴 Dock」。');
       return;
     }
     if (window.isDestroyed()) return;
@@ -221,14 +261,18 @@ function createMacDesktop(windowOptions, appUrl) {
     input.setBackgroundColor('#00000000');
     floating.contentView.addChildView(input);
     input.setBounds({ x: 0, y: 0, width: 150, height: 104 });
-    const source = browsing ? bilibili.view : player;
-    const current = { window: floating, input, source, dockDisplay, aspect, expanded: false };
+    const source = site ? site.view : player;
+    const current = { window: floating, input, source, site, dockDisplay, aspect, expanded: false };
     try {
       await input.webContents.loadURL(appUrl + '/mac-preview.html');
       if (window.isDestroyed()) return;
-      if (browsing) await bilibili.enablePreview();
+      if (site) {
+        const previewAspect = await site.enablePreview();
+        if (!Number.isFinite(previewAspect) || previewAspect <= 0) throw new Error('Video is no longer available');
+        current.aspect = previewAspect;
+      }
       if (window.isDestroyed()) return;
-      if (!browsing) await contents.executeJavaScript("document.documentElement.classList.add('taskbar-preview')");
+      if (!site) await contents.executeJavaScript("document.documentElement.classList.add('taskbar-preview')");
       if (window.isDestroyed()) return;
       preview = current;
       window.contentView.removeChildView(source);
@@ -250,7 +294,7 @@ function createMacDesktop(windowOptions, appUrl) {
     } catch (error) {
       if (!window.isDestroyed()) {
         if (preview === current) await leavePreview();
-        else if (browsing) await bilibili.disablePreview().catch(console.error);
+        else if (site) await site.disablePreview().catch(console.error);
         showMessage('无法打开贴 Dock 小窗，请重试。');
       }
       throw error;
@@ -265,14 +309,13 @@ function createMacDesktop(windowOptions, appUrl) {
     if (!current.window.isDestroyed()) current.window.destroy();
   }
 
-  async function leavePreview() {
-    const current = preview;
-    if (!current) return;
+  async function leavePreview(current = preview) {
+    if (!current || current !== preview) return;
     preview = null;
     clearTimeout(pendingClick);
     clearInterval(current.timer);
     try {
-      if (browsing) await bilibili.disablePreview();
+      if (current.site) await current.site.disablePreview();
       else await contents.executeJavaScript("document.documentElement.classList.remove('taskbar-preview')");
     } finally {
       if (!current.window.isDestroyed()) current.window.contentView.removeChildView(current.source);
@@ -316,14 +359,16 @@ function createMacDesktop(windowOptions, appUrl) {
         enqueue(leavePreview);
         break;
       case 'drag-start':
-        if (current.expanded && Number.isInteger(point?.x) && Number.isInteger(point?.y)) {
+        if (Number.isInteger(point?.x) && Number.isInteger(point?.y)) {
           const bounds = current.window.getBounds();
           current.drag = { x: point.x - bounds.x, y: point.y - bounds.y };
         }
         break;
       case 'drag-move':
         if (current.drag && Number.isInteger(point?.x) && Number.isInteger(point?.y)) {
-          current.location = { x: point.x - current.drag.x, y: point.y - current.drag.y };
+          const location = { x: point.x - current.drag.x, y: point.y - current.drag.y };
+          if (current.expanded) current.location = location;
+          else dockLocation = { ...location, displayId: current.dockDisplay };
           updatePreviewBounds(current);
         }
         break;
@@ -334,21 +379,23 @@ function createMacDesktop(windowOptions, appUrl) {
       case 'zoom-out':
       case 'fit':
       case 'max': {
-        if (!current.expanded) break;
-        const next = { 'zoom-in': zoom * 1.08, 'zoom-out': zoom / 1.08, fit: DEFAULT_ZOOM, max: MAX_ZOOM }[command];
-        zoom = clamp(next, MIN_ZOOM, MAX_ZOOM);
-        if (current.location) {
-          const { x, y } = current.window.getBounds();
-          current.location = { x, y };
+        const scale = current.expanded ? zoom : dockScale;
+        const min = current.expanded ? MIN_ZOOM : MIN_DOCK_SCALE;
+        const max = current.expanded ? MAX_ZOOM : MAX_DOCK_SCALE;
+        const fit = current.expanded ? DEFAULT_ZOOM : DEFAULT_DOCK_SCALE;
+        const next = clamp({ 'zoom-in': scale * 1.08, 'zoom-out': scale / 1.08, fit, max }[command], min, max);
+        if (next === scale) break;
+        if (current.expanded) {
+          zoom = next;
+          if (current.location) {
+            const { x, y } = current.window.getBounds();
+            current.location = { x, y };
+          }
+        } else {
+          dockScale = next;
         }
         updatePreviewBounds(current);
-        try {
-          fs.mkdirSync(path.dirname(zoomFile), { recursive: true });
-          fs.writeFileSync(zoomFile + '.tmp', JSON.stringify(zoom));
-          fs.renameSync(zoomFile + '.tmp', zoomFile);
-        } catch (error) {
-          console.warn('Unable to save Dock preview size:', error.message);
-        }
+        savePreviewSize(current.expanded ? zoomFile : dockScaleFile, next);
         break;
       }
     }
@@ -356,7 +403,7 @@ function createMacDesktop(windowOptions, appUrl) {
 
   function togglePlayback() {
     if (!preview || hidden) return;
-    return browsing ? bilibili.toggle() : contents.send(STATE, 'taskbar:play');
+    return preview.site ? preview.site.toggle() : contents.send(STATE, 'taskbar:play');
   }
 
   function activate() {
@@ -367,6 +414,7 @@ function createMacDesktop(windowOptions, appUrl) {
     visible.show();
     visible.focus();
     if (preview) preview.input.webContents.focus();
+    else browsingSite?.contents.focus();
   }
 
   async function toggleHidden() {
@@ -377,6 +425,7 @@ function createMacDesktop(windowOptions, appUrl) {
     }
     clearTimeout(pendingClick);
     hidden = true;
+    if (preview) preview.drag = null;
     updateMute();
     visible.hide();
     await pause();
@@ -394,19 +443,20 @@ function createMacDesktop(windowOptions, appUrl) {
       preview = null;
       closePreviewWindow(current);
     }
-    bilibili?.contents.close();
+    for (const site of siteViews.values()) if (!site.contents.isDestroyed()) site.contents.close();
     if (!contents.isDestroyed()) contents.close();
   });
-  // Bind to the local top frame. The remote Bilibili renderer has no desktop bridge.
+  // Bind to the local top frame. The remote site renderers have no desktop bridge.
   contents.ipc.on(COMMAND, (event, message) => {
     if (event.senderFrame !== contents.mainFrame || !['/', '/index.html'].some(route => event.senderFrame.url === appUrl + route) ||
         typeof message !== 'string' || message.length > 2070) return;
-    if (message.startsWith('bilibili:browse:')) {
-      enqueue(() => browseBilibili(message.slice('bilibili:browse:'.length)));
+    const browse = /^(bilibili|douyin):browse:/.exec(message);
+    if (browse) {
+      enqueue(() => browseSite(browse[1], message.slice(browse[0].length)));
       return;
     }
     const actions = {
-      'bilibili:return': returnToPlayer,
+      'site:return': returnToPlayer,
       'window:compact': () => setCompact(!compact),
       'window:dock': enterPreview
     };

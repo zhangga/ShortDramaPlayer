@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 const GAP = 6;
+const MIN_DOCK_SCALE = 0.5;
+const MAX_DOCK_SCALE = 2.5;
+const DEFAULT_DOCK_SCALE = 1;
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 0.8;
 const DEFAULT_ZOOM = 0.4;
@@ -30,22 +33,30 @@ function findDock(bounds, windows) {
   });
 }
 
-function dockPreviewBounds(display, dock, aspect) {
+function dockPreviewBounds(display, dock, aspect, scale = DEFAULT_DOCK_SCALE, location) {
   const { bounds, workArea } = display;
-  const size = fitSize(Math.min(150, workArea.width), Math.min(104, workArea.height), aspect);
-  if (dock && bottom(dock) >= bottom(bounds) - 24 && dock.height <= bounds.height * 0.25) {
-    for (const x of [right(dock) + GAP, dock.x - GAP - size.width]) {
-      if (x >= bounds.x + GAP && x + size.width <= right(bounds) - GAP) {
-        return { ...size, x: Math.round(x), y: Math.round(bottom(dock) - size.height) };
-      }
+  const size = fitSize(Math.min(150 * scale, workArea.width), Math.min(104 * scale, workArea.height), aspect);
+  const y = bottom(workArea) - size.height - GAP;
+  if (!dock) {
+    return keepInArea({ ...size, x: location?.x ?? right(workArea) - size.width - GAP, y }, workArea);
+  }
+  if (bottom(dock) >= bottom(bounds) - 24 && dock.height <= bounds.height * 0.25) {
+    const preferredX = location?.x ?? right(dock) + GAP;
+    const ranges = [
+      [right(dock) + GAP, right(bounds) - GAP - size.width],
+      [bounds.x + GAP, dock.x - GAP - size.width]
+    ];
+    let x;
+    for (const [min, max] of ranges) {
+      if (min > max) continue;
+      const candidate = clamp(preferredX, min, max);
+      if (x === undefined || Math.abs(candidate - preferredX) < Math.abs(x - preferredX)) x = candidate;
     }
-    return keepInArea({ ...size, x: right(dock) - size.width, y: dock.y - size.height - GAP }, workArea);
+    if (x !== undefined) return { ...size, x: Math.round(x), y: Math.round(bottom(dock) - size.height) };
+    return keepInArea({ ...size, x: location?.x ?? right(dock) - size.width, y: dock.y - size.height - GAP }, workArea);
   }
-  if (dock && dock.x <= bounds.x + 24) {
-    return keepInArea({ ...size, x: right(dock) + GAP, y: bottom(workArea) - size.height - GAP }, workArea);
-  }
-  const edge = dock ? dock.x : right(workArea);
-  return keepInArea({ ...size, x: edge - size.width - GAP, y: bottom(workArea) - size.height - GAP }, workArea);
+  const x = dock.x <= bounds.x + 24 ? right(dock) + GAP : dock.x - size.width - GAP;
+  return keepInArea({ ...size, x, y: location?.y ?? y }, workArea);
 }
 
 function expandedPreviewBounds(area, anchor, aspect, zoom, location) {
@@ -58,4 +69,7 @@ function expandedPreviewBounds(area, anchor, aspect, zoom, location) {
   }, area);
 }
 
-module.exports = { findDock, dockPreviewBounds, expandedPreviewBounds, keepInArea, clamp, MIN_ZOOM, MAX_ZOOM, DEFAULT_ZOOM };
+module.exports = {
+  findDock, dockPreviewBounds, expandedPreviewBounds, keepInArea, clamp,
+  MIN_DOCK_SCALE, MAX_DOCK_SCALE, DEFAULT_DOCK_SCALE, MIN_ZOOM, MAX_ZOOM, DEFAULT_ZOOM
+};

@@ -90,11 +90,14 @@ html.platform-mac .app-header {
   white-space: nowrap;
   -webkit-app-region: no-drag;
 }
-.mac-bilibili-header .nav-tabs,
-.mac-bilibili-header .header-menu-container { display: none; }
+.mac-site-header .nav-tabs,
+.mac-site-header .header-menu-container { display: none; }
 @media (max-width: 520px) {
-  html.platform-mac .app-header { padding-left: 76px; }
+  html.platform-mac .app-header:has(.mac-player-controls) { padding-right: 8px; gap: 6px; }
   html.platform-mac .app-header:has(.mac-player-controls) .brand-name { display: none; }
+  html.platform-mac .app-header:has(.mac-player-controls) .header-right { max-width: calc(100% - 6px); gap: 4px; }
+  html.platform-mac .app-header .site-entry { width: 32px; min-height: 36px; padding: 0; gap: 0; font-size: 0; }
+  .mac-player-controls .nav-item { padding-inline: 5px; }
 }
 
 /* 交互元素恢复可点击与输入 */
