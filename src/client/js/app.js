@@ -8,6 +8,14 @@ document.documentElement.classList.add(isDesktop ? (isMac ? 'platform-mac' : /Wi
 
 createApp({
   setup() {
+    const macDesktop = window.shortDramaDesktop;
+    const desktopState = ref({ compact: false, browsing: false, shortcut: false });
+    const desktopCommand = message => {
+      if (macDesktop) macDesktop.send(message);
+      else window.chrome?.webview?.postMessage(message);
+    };
+    let unsubscribeDesktop;
+
     // 视图模式与导航状态
     const viewMode = ref('catalog'); // 'catalog' | 'theater' | 'bilibili'
     const currentTab = ref('hot-drama'); // 'hot-drama' | 'real-drama' | 'comic-drama' | 'ai-drama' | 'history' | 'favorites' | 'search'
@@ -713,7 +721,7 @@ createApp({
 
     function showBilibili() {
       showBilibiliPlayer();
-      window.chrome?.webview?.postMessage('bilibili:browse:');
+      desktopCommand('bilibili:browse:');
     }
 
     function showBilibiliPlayer() {
@@ -726,19 +734,31 @@ createApp({
     }
 
     function openBilibiliSiteLink(event) {
-      const webview = window.chrome?.webview;
-      if (!webview) return;
+      if (!macDesktop && !window.chrome?.webview) return;
       event.preventDefault();
-      webview.postMessage('bilibili:browse:' + event.currentTarget.href);
+      desktopCommand('bilibili:browse:' + event.currentTarget.href);
     }
 
     async function openBilibiliVideo() {
       const request = ++bilibiliRequest;
       const text = bilibiliInput.value.trim();
-      let input = /https?:\/\/(?:b23\.tv|(?:www\.|m\.)?bilibili\.com)\/[^\s<>"，。！？】）]+/i.exec(text)?.[0] || text;
+      const linkPattern = macDesktop
+        ? /https?:\/\/(?:b23\.tv|(?:(?:www|m|live)\.)?bilibili\.com)\/[^\s<>"，。！？】）]+/i
+        : /https?:\/\/(?:b23\.tv|(?:www\.|m\.)?bilibili\.com)\/[^\s<>"，。！？】）]+/i;
+      let input = linkPattern.exec(text)?.[0] || text;
       const shortCode = /^(?:https?:\/\/)?b23\.tv\/([A-Za-z0-9]{1,32}(?:\/p[1-9]\d{0,5})?)\/?(?:[?#].*)?$/i.exec(input)?.[1];
       bilibiliLoading.value = Boolean(shortCode);
       bilibiliError.value = '';
+      if (macDesktop) {
+        const liveId = /^(?:https?:\/\/)?live\.bilibili\.com\/([1-9]\d{0,17})\/?(?:[?#].*)?$/i.exec(input)?.[1];
+        const target = shortCode ? 'https://b23.tv/' + shortCode :
+          liveId ? 'https://live.bilibili.com/' + liveId : parseBilibiliVideo(input)?.original;
+        bilibiliLoading.value = false;
+        if (target) {
+          desktopCommand('bilibili:browse:' + target);
+          return;
+        }
+      }
 
       if (shortCode) {
         try {
@@ -756,7 +776,9 @@ createApp({
       if (request !== bilibiliRequest) return;
       const video = parseBilibiliVideo(input);
       if (!video) {
-        bilibiliError.value = '请输入 B 站视频页链接、分享短链接、BV 号或 av 号。';
+        bilibiliError.value = macDesktop
+          ? '请输入 B 站视频或直播间链接、分享短链接、BV 号或 av 号。'
+          : '请输入 B 站视频页链接、分享短链接、BV 号或 av 号。';
         bilibiliInputEl.value?.focus();
         return;
       }
@@ -1489,7 +1511,7 @@ createApp({
     }
 
     function taskbarCommand(command) {
-      window.chrome?.webview?.postMessage('taskbar:' + command);
+      desktopCommand('taskbar:' + command);
     }
 
     const {
@@ -2037,6 +2059,10 @@ createApp({
       loadSearchHistory();
       loadCatalog();
       window.chrome?.webview?.addEventListener('message', handleDesktopMessage);
+      unsubscribeDesktop = macDesktop?.onMessage(message => {
+        if (typeof message === 'string') handleDesktopMessage({ data: message });
+        else desktopState.value = message;
+      });
       window.addEventListener('keydown', handleKeyDown);
       window.addEventListener('click', handleGlobalClick);
       window.addEventListener('mousemove', handleWindowMouseMove);
@@ -2063,6 +2089,7 @@ createApp({
       bytevc2Session?.stop();
       stopDanmakuAnimation();
       window.chrome?.webview?.removeEventListener('message', handleDesktopMessage);
+      unsubscribeDesktop?.();
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('click', handleGlobalClick);
       window.removeEventListener('mousemove', handleWindowMouseMove);
@@ -2117,6 +2144,7 @@ createApp({
       switchTab,
       changePage,
       goHome,
+      macDesktop, desktopState, desktopCommand,
       showBilibili, openBilibiliSiteLink, openBilibiliVideo, bilibiliInput, bilibiliInputEl, bilibiliVideo, bilibiliError, bilibiliLoading,
       openTheater,
       closeTheater,

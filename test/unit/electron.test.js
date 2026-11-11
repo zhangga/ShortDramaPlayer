@@ -13,6 +13,7 @@ for (const platform of ['darwin', 'win32', 'linux']) test(`desktop lifecycle and
     static getAllWindows() { return windows.filter(w => !w.closed); }
     constructor(options) { super(); this.options = options; this.webContents = new EventEmitter(); this.webContents.reload = () => { this.reloads = (this.reloads || 0) + 1; }; this.webContents.setWindowOpenHandler = handler => { this.open = handler; }; windows.push(this); }
     async loadURL() { this.emit('ready-to-show'); }
+    isDestroyed() { return Boolean(this.closed); }
     show() { this.shown = true; }
     focus() {}
   }
@@ -27,6 +28,11 @@ for (const platform of ['darwin', 'win32', 'linux']) test(`desktop lifecycle and
         dialog: { showErrorBox() {}, showMessageBox: async () => ({ response: 0 }) } };
       if (name === '../server/index.js') return { startServer: async () => { starts++; return { server: { close() {} }, port: 8899 }; } };
       if (name === '../server/services/logger') return require('../../src/server/services/logger');
+      if (name === './mac-desktop') return { createMacDesktop(options) {
+        const window = new Window(options);
+        window.webContents.loadURL = () => window.loadURL();
+        return { window, contents: window.webContents, activate: () => window.show() };
+      } };
       return require(name);
     } };
   vm.runInNewContext(fs.readFileSync(require.resolve('../../src/electron/main.js'), 'utf8'), context);
@@ -57,11 +63,11 @@ for (const platform of ['darwin', 'win32', 'linux']) test(`desktop lifecycle and
   assert.equal(windows[1].open({ url: 'file:///etc/passwd' }).action, 'deny');
   const helpMenu = lastMenuTemplate.find(m => m.label === '帮助');
   assert.ok(helpMenu);
-  const aboutHelp = helpMenu.submenu.find(i => i.label === '关于 红果开源播放器');
+  const aboutHelp = helpMenu.submenu.find(i => i.label === (platform === 'darwin' ? '关于 短剧小窗' : '关于 红果开源播放器'));
   assert.ok(aboutHelp);
   aboutHelp.click();
   await new Promise(resolve => setImmediate(resolve));
-  assert.equal(openedUrl, 'https://github.com/zfdang/hongguo-open-player');
+  assert.equal(openedUrl, platform === 'darwin' ? 'https://github.com/zhangga/ShortDramaPlayer' : 'https://github.com/zfdang/hongguo-open-player');
 });
 
 test('packaging artifact names use english hongguo-open-player without breaking chinese productName', () => {

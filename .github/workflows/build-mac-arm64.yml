@@ -1,0 +1,57 @@
+name: Apple Silicon preview
+
+on:
+  push:
+    branches:
+      - codex/macos-arm64
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: macos-15
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.x
+          cache: npm
+      - uses: actions/cache@v6
+        id: decoder
+        with:
+          path: build/bytevc2/arm64
+          key: bytevc2-mac-arm64-${{ hashFiles('scripts/build-bytevc2.sh', 'vendor/bytevc2/**') }}
+      - if: steps.decoder.outputs.cache-hit != 'true'
+        run: bash scripts/build-bytevc2.sh
+      - run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      - run: npm run test:unit
+      - name: Build the Apple Silicon app
+        run: |
+          npm run build:mac:arm64 -- \
+            '-c.productName=短剧小窗' \
+            '-c.appId=com.zhangga.shortdrama' \
+            '-c.mac.artifactName=ShortDramaPlayer-mac-arm64.${ext}' \
+            '-c.dmg.title=短剧小窗' \
+            '-c.electronDownload.mirror=https://github.com/electron/electron/releases/download/'
+      - name: Verify native binaries and create checksums
+        run: |
+          app='dist-electron/mac-arm64/短剧小窗.app'
+          codesign --verify --deep --strict "$app"
+          test "$(lipo -archs "$app/Contents/MacOS/短剧小窗")" = arm64
+          test "$(lipo -archs "$app/Contents/Resources/dock-helper/dock-geometry")" = arm64
+          "$app/Contents/Resources/dock-helper/dock-geometry"
+          "$app/Contents/Resources/bytevc2/ffmpeg" -hide_banner -decoders | grep ' bvc2 '
+          (cd dist-electron && shasum -a 256 ShortDramaPlayer-mac-arm64.dmg ShortDramaPlayer-mac-arm64.zip > SHA256SUMS-mac-arm64.txt)
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ShortDramaPlayer-mac-arm64
+          path: |
+            dist-electron/ShortDramaPlayer-mac-arm64.dmg
+            dist-electron/ShortDramaPlayer-mac-arm64.zip
+            dist-electron/SHA256SUMS-mac-arm64.txt
+          if-no-files-found: error

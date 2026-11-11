@@ -22,6 +22,7 @@
     "productName": "红果开源播放器",
     "copyright": "Copyright © 2026",
     "publish": null,
+    "beforePack": "scripts/build-mac-dock-helper.js",
     "electronDownload": {
       "mirror": "https://npmmirror.com/mirrors/electron/"
     },
@@ -30,11 +31,14 @@
     },
     "artifactName": "${name}-${version}-${os}-${arch}.${ext}",
     "mac": {
-      "extraResources": [{ "from": "build/bytevc2/${arch}", "to": "bytevc2" }],
+      "extraResources": [
+        { "from": "build/bytevc2/${arch}", "to": "bytevc2" },
+        { "from": "build/dock-helper/${arch}", "to": "dock-helper" }
+      ],
       "category": "public.app-category.video",
       "icon": "build/icon.icns",
       "artifactName": "${name}-${version}-mac-${arch}.${ext}",
-      "identity": null,
+      "identity": "-",
       "target": [
         {
           "target": "dmg",

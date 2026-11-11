@@ -11,7 +11,7 @@
 <body class="dark-theme">
   <div id="app">
     <!-- 顶部导航栏 -->
-    <header class="app-header">
+    <header class="app-header" :class="{ 'mac-bilibili-header': desktopState.browsing }">
       <div class="header-left">
         <div class="brand" @click="goHome" title="返回首页">
           <img class="brand-icon" src="/assets/app-icon.png" alt="" width="28" height="28" aria-hidden="true">
@@ -53,8 +53,14 @@
           </div>
         </div>
 
-        <button type="button" class="nav-item bilibili-nav" :class="{ active: viewMode === 'bilibili' }"
+        <button v-if="!desktopState.browsing" type="button" class="nav-item bilibili-nav" :class="{ active: viewMode === 'bilibili' }"
           :aria-pressed="viewMode === 'bilibili'" @click="showBilibili">哔哩哔哩</button>
+        <div v-if="macDesktop" class="mac-player-controls">
+          <button v-if="desktopState.browsing" type="button" class="nav-item" @click="desktopCommand('bilibili:return')">返回播放器</button>
+          <button type="button" class="nav-item" @click="desktopCommand('window:compact')">{{ desktopState.compact ? '大窗' : '小窗' }}</button>
+          <button type="button" class="nav-item" @click="desktopCommand('window:dock')"
+            :title="desktopState.shortcut ? '⌃⌥F9 收起 / 恢复' : '贴着 Dock 播放'">贴 Dock</button>
+        </div>
 
         <!-- 菜单与帮助入口 (类似 Android 三横线菜单图标) -->
         <div class="header-menu-container">
@@ -283,7 +289,7 @@
         <div class="bilibili-toolbar">
           <form class="bilibili-form" @submit.prevent="openBilibiliVideo">
             <input ref="bilibiliInputEl" v-model="bilibiliInput" type="text" maxlength="2048"
-              placeholder="粘贴 B 站分享链接或输入 BV 号" aria-label="B 站分享链接或 BV 号"
+              :placeholder="macDesktop ? '粘贴视频或直播链接' : '粘贴 B 站分享链接或输入 BV 号'" aria-label="B 站分享链接或 BV 号"
               :aria-invalid="Boolean(bilibiliError)" :aria-describedby="bilibiliError ? 'bilibili-error' : undefined"
               autocomplete="off" spellcheck="false" @input="bilibiliError = ''">
             <button type="submit" :disabled="bilibiliLoading">{{ bilibiliLoading ? '正在解析…' : '打开' }}</button>

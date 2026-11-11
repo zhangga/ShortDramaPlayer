@@ -3,6 +3,7 @@ node_modules/
 dist/
 dist-electron/
 build/bytevc2/
+build/dock-helper/
 /data/*
 !/data/.gitkeep
 *.bak

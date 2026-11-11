@@ -83,6 +83,20 @@ html.platform-mac .app-header {
   padding-left: 76px;
 }
 
+.mac-player-controls {
+  display: flex;
+  flex-shrink: 0;
+  gap: 4px;
+  white-space: nowrap;
+  -webkit-app-region: no-drag;
+}
+.mac-bilibili-header .nav-tabs,
+.mac-bilibili-header .header-menu-container { display: none; }
+@media (max-width: 520px) {
+  html.platform-mac .app-header { padding-left: 76px; }
+  html.platform-mac .app-header:has(.mac-player-controls) .brand-name { display: none; }
+}
+
 /* 交互元素恢复可点击与输入 */
 .app-header button,
 .app-header input,

@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dock 播放</title>
+  <style>
+    html, body { margin: 0; width: 100%; height: 100%; background: transparent; }
+    button { display: block; width: 100%; height: 100%; border: 0; background: transparent; cursor: pointer; touch-action: none; }
+    button:focus-visible { outline: 1px solid #fff; outline-offset: -2px; }
+    html.taskbar-expanded button { cursor: grab; }
+    html.taskbar-expanded button:active { cursor: grabbing; }
+  </style>
+</head>
+<body>
+  <button type="button" aria-label="单击播放或暂停，双击展开或缩回，右键返回小窗"></button>
+  <script src="/js/taskbar-controls.js"></script>
+  <script src="/js/mac-preview.js"></script>
+</body>
+</html>

@@ -11,8 +11,13 @@ let mainWindow = null;
 let serverInstance = null;
 let serverStart = null;
 let windowCreation = null;
+let macDesktop = null;
 function createWindow() {
-  if (mainWindow) { mainWindow.focus(); return Promise.resolve(); }
+  if (mainWindow) {
+    if (macDesktop) macDesktop.activate();
+    else mainWindow.focus();
+    return Promise.resolve();
+  }
   windowCreation ||= buildWindow().catch(error => {
     console.error('Window startup failed:', error);
     dialog.showErrorBox('播放器启动失败', '无法启动本地播放服务，请关闭应用后重试。');
@@ -48,7 +53,7 @@ async function buildWindow() {
     height: 840,
     minWidth: 960,
     minHeight: 640,
-    title: '红果开源播放器',
+    title: isMac ? '短剧小窗' : '红果开源播放器',
     backgroundColor: '#0f1015',
     autoHideMenuBar: !isMac, // Windows 下默认隐藏传统菜单栏，保持纯粹现代深色观影质感 (按 Alt 唤出)
     webPreferences: {
@@ -74,20 +79,22 @@ async function buildWindow() {
     }
   }
 
-  const window = new BrowserWindow(windowOptions);
-  mainWindow = window;
   const appUrl = `http://127.0.0.1:${port}`;
-  window.once('ready-to-show', () => window.show());
-  window.webContents.setWindowOpenHandler(({ url }) => {
+  macDesktop = isMac ? require('./mac-desktop').createMacDesktop(windowOptions, appUrl) : null;
+  const window = macDesktop?.window ?? new BrowserWindow(windowOptions);
+  const contents = macDesktop?.contents ?? window.webContents;
+  mainWindow = window;
+  if (!macDesktop) window.once('ready-to-show', () => window.show());
+  contents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/.test(url)) shell.openExternal(url).catch(console.error);
     return { action: 'deny' };
   });
   const guardNavigation = (event, url) => {
-    try { if (new URL(url).origin === appUrl) return; } catch (_) {}
+    try { if (new URL(event.url ?? url).origin === appUrl) return; } catch (_) {}
     event.preventDefault();
   };
   let recoveryPending = false;
-  window.webContents.on('render-process-gone', async (_event, details) => {
+  contents.on('render-process-gone', async (_event, details) => {
     if (details.reason === 'clean-exit' || recoveryPending || mainWindow !== window || window.isDestroyed?.()) return;
     recoveryPending = true;
     try {
@@ -96,22 +103,30 @@ async function buildWindow() {
         detail: '可以重新加载界面，播放进度将从最近保存的位置恢复。',
         buttons: ['重新加载', '稍后处理'], defaultId: 0, cancelId: 1, noLink: true
       });
-      if (result.response === 0 && mainWindow === window && !window.isDestroyed?.() && !window.webContents.isDestroyed?.()) window.webContents.reload();
+      if (result.response === 0 && mainWindow === window && !window.isDestroyed?.() && !contents.isDestroyed?.()) contents.reload();
     } catch (error) {
       console.error('Renderer recovery failed:', error);
     } finally {
       recoveryPending = false;
     }
   });
-  window.webContents.on('will-navigate', guardNavigation);
-  window.webContents.on('will-redirect', guardNavigation);
+  contents.on('will-navigate', guardNavigation);
+  contents.on('will-redirect', guardNavigation);
   window.on('closed', () => {
-    if (mainWindow === window) mainWindow = null;
+    if (mainWindow === window) {
+      mainWindow = null;
+      macDesktop = null;
+    }
   });
 
   for (let attempt = 1; attempt <= 5; attempt++) {
     try {
-      await window.loadURL(appUrl);
+      if (macDesktop) {
+        await contents.loadURL(appUrl);
+        if (!window.isDestroyed()) window.show();
+      } else {
+        await window.loadURL(appUrl);
+      }
       break;
     } catch (err) {
       if (attempt === 5) throw err;
@@ -120,9 +135,12 @@ async function buildWindow() {
   }
 }
 
-const GITHUB_REPO_URL = 'https://github.com/zfdang/hongguo-open-player';
+const GITHUB_REPO_URL = process.platform === 'darwin'
+  ? 'https://github.com/zhangga/ShortDramaPlayer'
+  : 'https://github.com/zfdang/hongguo-open-player';
 
 function showAboutDialog() {
+  const name = process.platform === 'darwin' ? '短剧小窗' : '红果开源播放器';
   const version = typeof app.getVersion === 'function' ? app.getVersion() : '1.0.0';
   const iconPath = process.platform === 'darwin'
     ? path.join(__dirname, '../../build/icon.png')
@@ -137,9 +155,9 @@ function showAboutDialog() {
 
   dialog.showMessageBox(mainWindow || undefined, {
     type: 'info',
-    title: '关于 红果开源播放器',
-    message: `红果开源播放器 v${version}`,
-    detail: `一款优雅、无广告的开源跨平台红果短剧播放器。\n\n项目开源主页: ${GITHUB_REPO_URL}\n开源许可: GPL-3.0`,
+    title: `关于 ${name}`,
+    message: `${name} v${version}`,
+    detail: `${process.platform === 'darwin' ? '支持红果短剧、B 站视频和直播。' : '一款优雅、无广告的开源跨平台红果短剧播放器。'}\n\n项目开源主页: ${GITHUB_REPO_URL}\n开源许可: GPL-3.0`,
     buttons: ['访问 GitHub 主页', '确定'],
     defaultId: 0,
     cancelId: 1,
@@ -155,24 +173,25 @@ function showAboutDialog() {
 // 构建原生 macOS 菜单栏
 function setupMenu() {
   const isMac = process.platform === 'darwin';
+  const name = isMac ? '短剧小窗' : '红果开源播放器';
   const template = [
     ...(isMac
       ? [
           {
-            label: '红果开源播放器',
+            label: name,
             submenu: [
               {
-                label: '关于 红果开源播放器',
+                label: `关于 ${name}`,
                 click: () => showAboutDialog()
               },
               { type: 'separator' },
               { role: 'services', label: '服务' },
               { type: 'separator' },
-              { role: 'hide', label: '隐藏 红果开源播放器' },
+              { label: '收起 / 恢复', accelerator: 'Command+H', click: () => macDesktop?.toggleHidden() },
               { role: 'hideOthers', label: '隐藏其他' },
               { role: 'unhide', label: '全部显示' },
               { type: 'separator' },
-              { role: 'quit', label: '退出 红果开源播放器' }
+              { role: 'quit', label: `退出 ${name}` }
             ]
           }
         ]
@@ -223,7 +242,7 @@ function setupMenu() {
       label: '帮助',
       submenu: [
         {
-          label: '关于 红果开源播放器',
+          label: `关于 ${name}`,
           click: () => showAboutDialog()
         },
         {
@@ -266,7 +285,8 @@ if (!gotTheLock) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    if (mainWindow) {
+    if (macDesktop) macDesktop.activate();
+    else if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
     }
@@ -278,7 +298,7 @@ if (!gotTheLock) {
     }
     if (typeof app.setAboutPanelOptions === 'function') {
       app.setAboutPanelOptions({
-        applicationName: '红果开源播放器',
+        applicationName: process.platform === 'darwin' ? '短剧小窗' : '红果开源播放器',
         applicationVersion: typeof app.getVersion === 'function' ? app.getVersion() : '1.0.0',
         copyright: 'Copyright © 2026 zfdang. Licensed under GPL-3.0.',
         website: GITHUB_REPO_URL,
@@ -291,7 +311,8 @@ if (!gotTheLock) {
     });
 
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) {
+      if (macDesktop) macDesktop.activate();
+      else if (!mainWindow) {
         createWindow().catch(console.error);
       }
     });

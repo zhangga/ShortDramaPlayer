@@ -4,6 +4,12 @@
 
 [下载 Windows x64 便携版](https://github.com/zhangga/ShortDramaPlayer/releases/latest) · [使用说明](desktop/windows/使用说明.txt) · [构建与维护](docs/windows-maintenance.md)
 
+## macOS Apple Silicon 预览版
+
+播放红果短剧、B 站普通视频或直播后，点击「贴 Dock」。底部 Dock 旁边有空位时，小窗和 Dock 底边齐平，空间不足时贴 Dock 上沿。单击播放或暂停，双击展开或缩回，展开后可以拖动和用滚轮等比缩放，大小会在下次展开时恢复。右键回到带控制栏的小窗，`Control + Option + F9` 可全局收起或恢复。
+
+点「哔哩哔哩」可在应用内浏览、登录。点「返回播放器」可粘贴视频、直播间或分享链接。切换到贴 Dock 模式会沿用当前网页和登录状态。
+
 ## 界面预览
 
 ### 常规播放窗口
@@ -56,6 +62,14 @@
 
 ```powershell
 pwsh -File .\scripts\package-windows.ps1
+```
+
+在 Apple Silicon Mac 上可从源码生成 DMG 和 ZIP，需要 Node.js 22 和 Xcode 命令行工具。
+
+```bash
+npm ci
+bash scripts/build-bytevc2.sh
+npm run build:mac:arm64
 ```
 
 ## 开源来源
