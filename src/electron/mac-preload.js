@@ -2,7 +2,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('shortDramaDesktop', {
-  send: message => ipcRenderer.send('shortdrama:command', message),
+  send: (message, point) => ipcRenderer.send('shortdrama:command', message, point),
   onMessage: listener => {
     const receive = (_event, message) => listener(message);
     ipcRenderer.on('shortdrama:state', receive);

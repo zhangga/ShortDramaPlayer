@@ -219,6 +219,8 @@ function createMacDesktop(windowOptions, appUrl) {
     floating.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
     const input = new WebContentsView({ webPreferences: LOCAL_VIEW });
     input.setBackgroundColor('#00000000');
+    floating.contentView.addChildView(input);
+    input.setBounds({ x: 0, y: 0, width: 150, height: 104 });
     const source = browsing ? bilibili.view : player;
     const current = { window: floating, input, source, dockDisplay, aspect, expanded: false };
     try {
@@ -230,11 +232,10 @@ function createMacDesktop(windowOptions, appUrl) {
       if (window.isDestroyed()) return;
       preview = current;
       window.contentView.removeChildView(source);
-      floating.contentView.addChildView(source);
-      floating.contentView.addChildView(input);
-      input.webContents.ipc.on(COMMAND, (event, message) => {
+      floating.contentView.addChildView(source, 0);
+      input.webContents.ipc.on(COMMAND, (event, message, point) => {
         if (event.senderFrame === input.webContents.mainFrame && event.senderFrame.url === appUrl + '/mac-preview.html' && typeof message === 'string' &&
-            message.startsWith('taskbar:') && current === preview && !hidden) handleGesture(current, message.slice(8));
+            message.startsWith('taskbar:') && current === preview && !hidden) handleGesture(current, message.slice(8), point);
       });
       floating.on('close', event => {
         if (preview !== current) return;
@@ -288,7 +289,7 @@ function createMacDesktop(windowOptions, appUrl) {
     }
   }
 
-  function handleGesture(current, command) {
+  function handleGesture(current, command, point) {
     switch (command) {
       case 'click':
         clearTimeout(pendingClick);
@@ -315,15 +316,13 @@ function createMacDesktop(windowOptions, appUrl) {
         enqueue(leavePreview);
         break;
       case 'drag-start':
-        if (current.expanded) {
-          const point = screen.getCursorScreenPoint();
+        if (current.expanded && Number.isInteger(point?.x) && Number.isInteger(point?.y)) {
           const bounds = current.window.getBounds();
           current.drag = { x: point.x - bounds.x, y: point.y - bounds.y };
         }
         break;
       case 'drag-move':
-        if (current.drag) {
-          const point = screen.getCursorScreenPoint();
+        if (current.drag && Number.isInteger(point?.x) && Number.isInteger(point?.y)) {
           current.location = { x: point.x - current.drag.x, y: point.y - current.drag.y };
           updatePreviewBounds(current);
         }

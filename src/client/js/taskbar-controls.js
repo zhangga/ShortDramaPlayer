@@ -19,14 +19,14 @@ function createTaskbarControls(send, isExpanded) {
     if (event.pointerType !== 'mouse' || !isExpanded()) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     drag = { pointerId: event.pointerId, x: event.screenX, y: event.screenY };
-    send('drag-start');
+    send('drag-start', { x: event.screenX, y: event.screenY });
   }
 
   function moveTaskbarDrag(event) {
     if (drag?.pointerId !== event.pointerId || !(event.buttons & 1)) return;
     if (!wasDragged && Math.hypot(event.screenX - drag.x, event.screenY - drag.y) < 4) return;
     wasDragged = true;
-    send('drag-move');
+    send('drag-move', { x: event.screenX, y: event.screenY });
   }
 
   function finishTaskbarDrag(event) {

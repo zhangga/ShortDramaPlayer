@@ -56,6 +56,14 @@ async function connect(url) {
         await send('Input.dispatchMouseEvent', { type, x: 15, y: 15, button, clickCount });
       }
     },
+    async drag() {
+      const mouse = (type, x, y, button, buttons) =>
+        send('Input.dispatchMouseEvent', { type, x, y, button, buttons, clickCount: 1 });
+      await mouse('mouseMoved', 70, 70, 'none', 0);
+      await mouse('mousePressed', 70, 70, 'left', 1);
+      await mouse('mouseMoved', 25, 35, 'none', 1);
+      await mouse('mouseReleased', 25, 35, 'left', 0);
+    },
     wheel: () => send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: 15, y: 15, deltaX: 0, deltaY: -100 }),
     activate: () => send('Page.bringToFront'),
     close: () => socket.close()
@@ -119,10 +127,12 @@ async function verify(executable) {
       const overlay = await page('/mac-preview.html');
       await until(() => player.evaluate("document.documentElement.classList.contains('taskbar-preview')"), 'preview mode');
       await until(() => overlay.evaluate('innerHeight <= 104 && innerHeight > 0'), 'compact preview size');
+      await overlay.activate();
+      // Wait for the new view's compositor to receive its first pointer input.
+      await overlay.wheel();
       return overlay;
     };
     let overlay = await enter();
-    await overlay.activate();
     const size = () => overlay.evaluate('[innerWidth, innerHeight]');
     const paused = () => player.evaluate("document.getElementById('dock-test-video').paused");
     await overlay.evaluate(`(() => {
@@ -153,6 +163,12 @@ async function verify(executable) {
     await overlay.wheel();
     await until(async () => (await size())[1] > height, 'wheel zoom');
     const remembered = await size();
+    const previousLocation = await overlay.evaluate('[screenX, screenY]');
+    await overlay.drag();
+    await until(async () => {
+      const [x, y] = await overlay.evaluate('[screenX, screenY]');
+      return x < previousLocation[0] && y < previousLocation[1];
+    }, 'drag the expanded preview');
     const leave = async () => {
       await overlay.click('right', 1);
       await until(() => player.evaluate("!document.documentElement.classList.contains('taskbar-preview') && document.querySelector('.mac-player-controls').textContent.includes('大窗')"), 'right click to return to the compact player');
@@ -162,7 +178,7 @@ async function verify(executable) {
     await expand();
     assert.deepEqual(await size(), remembered);
     await leave();
-    console.log('Verified packaged arm64 player, Dock preview, pause/play, full aspect, zoom memory, and right-click return.');
+    console.log('Verified packaged arm64 player, Dock preview, pause/play, full aspect, dragging, zoom memory, and right-click return.');
   } catch (error) {
     console.error(output.slice(-12000));
     throw error;
