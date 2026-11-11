@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
-function mountBilibiliTaskbar(send) {
+function mountSiteTaskbar(send) {
   const root = document.documentElement;
   const button = document.createElement('button');
   button.type = 'button';
   button.id = 'shortdrama-taskbar-input';
-  button.title = '单击播放或暂停，双击展开或缩回，右键返回 B 站，滚轮缩放';
-  button.setAttribute('aria-label', '展开或缩回直播和视频画面');
+  button.title = '单击播放或暂停，双击展开或缩回，右键返回网页，滚轮缩放';
+  button.setAttribute('aria-label', '展开或缩回视频画面');
   button.style.cssText = 'position:fixed!important;inset:0!important;width:100%!important;height:100%!important;'
     + 'padding:0!important;border:0!important;background:transparent!important;visibility:visible!important;'
     + 'z-index:2147483647!important;touch-action:none!important;cursor:pointer!important;';

@@ -9,6 +9,7 @@ document.documentElement.classList.add(isDesktop ? (isMac ? 'platform-mac' : /Wi
 createApp({
   setup() {
     const macDesktop = window.shortDramaDesktop;
+    const windowsDesktop = !macDesktop && Boolean(window.chrome?.webview);
     const desktopState = ref({ compact: false, browsing: false, shortcut: false });
     const desktopCommand = message => {
       if (macDesktop) macDesktop.send(message);
@@ -17,7 +18,7 @@ createApp({
     let unsubscribeDesktop;
 
     // 视图模式与导航状态
-    const viewMode = ref('catalog'); // 'catalog' | 'theater' | 'bilibili'
+    const viewMode = ref('catalog'); // 'catalog' | 'theater' | 'bilibili' | 'douyin'
     const currentTab = ref('hot-drama'); // 'hot-drama' | 'real-drama' | 'comic-drama' | 'ai-drama' | 'history' | 'favorites' | 'search'
     const searchKeyword = ref('');
     const searchHistory = ref([]);
@@ -31,6 +32,10 @@ createApp({
     const bilibiliError = ref('');
     const bilibiliLoading = ref(false);
     let bilibiliRequest = 0;
+    const douyinInput = ref('');
+    const douyinError = ref('');
+    const douyinLoading = ref(false);
+    let douyinRequest = 0;
 
     // 目录与短剧列表
     const currentDramas = ref([]);
@@ -722,6 +727,42 @@ createApp({
     function showBilibili() {
       showBilibiliPlayer();
       desktopCommand('bilibili:browse:');
+    }
+
+    function showDouyin() {
+      if (!windowsDesktop || viewMode.value === 'douyin') return;
+      leaveTheater();
+      closeActorDetail();
+      viewMode.value = 'douyin';
+    }
+
+    function browseDouyin() {
+      douyinRequest++;
+      douyinLoading.value = false;
+      douyinError.value = '';
+      desktopCommand('douyin:browse:https://www.douyin.com/series');
+    }
+
+    async function openDouyinVideo() {
+      if (!windowsDesktop || viewMode.value !== 'douyin' || douyinLoading.value) return;
+      const request = ++douyinRequest;
+      douyinError.value = '';
+      douyinLoading.value = true;
+      try {
+        const response = await fetch('/api/douyin/share-link', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: douyinInput.value.trim() })
+        });
+        const result = await response.json();
+        if (request !== douyinRequest) return;
+        if (!response.ok) douyinError.value = result.error;
+        else desktopCommand('douyin:browse:' + result.url);
+      } catch (_) {
+        if (request === douyinRequest) douyinError.value = '暂时无法打开抖音链接，请重试。';
+      } finally {
+        if (request === douyinRequest) douyinLoading.value = false;
+      }
     }
 
     function showBilibiliPlayer() {
@@ -1420,6 +1461,10 @@ createApp({
       if (viewMode.value === 'bilibili') {
         bilibiliRequest++;
         bilibiliLoading.value = false;
+      }
+      if (viewMode.value === 'douyin') {
+        douyinRequest++;
+        douyinLoading.value = false;
       }
       theaterRequest++;
       saveProgressNow();
@@ -2144,7 +2189,8 @@ createApp({
       switchTab,
       changePage,
       goHome,
-      macDesktop, desktopState, desktopCommand,
+      macDesktop, windowsDesktop, desktopState, desktopCommand,
+      showDouyin, browseDouyin, openDouyinVideo, douyinInput, douyinError, douyinLoading,
       showBilibili, openBilibiliSiteLink, openBilibiliVideo, bilibiliInput, bilibiliInputEl, bilibiliVideo, bilibiliError, bilibiliLoading,
       openTheater,
       closeTheater,

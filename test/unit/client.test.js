@@ -186,6 +186,29 @@ test('Windows opens Bilibili in the desktop view and can send a video back to th
   assert.equal(messages.length, 2);
 });
 
+test('Windows opens Douyin links and ignores pending links when the user opens the channel', async () => {
+  const messages = [];
+  let finishLink;
+  const state = client(async (url, options) => {
+    if (url !== '/api/douyin/share-link') return response([]);
+    assert.deepEqual(JSON.parse(options.body), { text: '复制打开抖音 https://v.douyin.com/Video/' });
+    return new Promise(resolve => { finishLink = resolve; });
+  }, { window: { chrome: { webview: { postMessage: message => messages.push(message) } } } });
+  state.showDouyin();
+  assert.equal(state.viewMode.value, 'douyin');
+  state.douyinInput.value = '复制打开抖音 https://v.douyin.com/Video/';
+  const video = 'https://www.douyin.com/video/7445134423600762164';
+  const opening = state.openDouyinVideo();
+  finishLink(response({ url: video }));
+  await opening;
+  const pending = state.openDouyinVideo();
+  state.browseDouyin();
+  finishLink(response({ url: video }));
+  await pending;
+  assert.equal(state.douyinLoading.value, false);
+  assert.deepEqual(messages, [`douyin:browse:${video}`, 'douyin:browse:https://www.douyin.com/series']);
+});
+
 test('favoriting a long series sends metadata without its full episode list', async () => {
   let body;
   const state = client(async (url, options) => { body = JSON.parse(options.body); return response({ is_favorite: true }); });

@@ -95,6 +95,46 @@ test('API exceptions do not expose filesystem or upstream request details', asyn
   assert.equal((await response.json()).error, '操作失败，请稍后重试');
 });
 
+test('Douyin accepts episode links and resolves share short links without following foreign redirects', async t => {
+  const fetchLocal = globalThis.fetch;
+  const calls = [];
+  const id = '7445134423600762164';
+  const destinations = {
+    Episode: `https://www.iesdouyin.com/share/video/${id}/?tracking=1`,
+    Foreign: `https://douyin.com.example.org/video/${id}`,
+    Series: 'https://www.iesdouyin.com/share/playlet/detail/7581665379895511081/'
+  };
+  globalThis.fetch = async (url, options) => {
+    assert.equal(options.redirect, 'manual');
+    calls.push(url);
+    const code = new URL(url).pathname.split('/')[1];
+    return new Response(null, { status: 302, headers: { location: destinations[code] } });
+  };
+  t.after(() => { globalThis.fetch = fetchLocal; });
+  const { server, port } = await startServer(0);
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const base = `http://127.0.0.1:${port}`;
+  const home = await fetchLocal(base);
+  const Cookie = home.headers.get('set-cookie').split(';')[0];
+  const resolveShare = text => fetchLocal(`${base}/api/douyin/share-link`, {
+    method: 'POST', headers: { Cookie, 'Content-Type': 'application/json' }, body: JSON.stringify({ text })
+  });
+  const video = `https://www.douyin.com/video/${id}`;
+  for (const input of [video, `复制打开抖音 https://v.douyin.com/Episode/。 03/20`]) {
+    const response = await resolveShare(input);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { url: video });
+  }
+  const episode = `https://www.douyin.com/series?modal_id=${id}`;
+  assert.deepEqual(await (await resolveShare(episode + '&tracking=1')).json(), { url: episode });
+  assert.equal((await resolveShare('https://v.douyin.com@foreign.example/Episode/')).status, 400);
+  assert.equal((await resolveShare('https://v.douyin.com/Foreign/')).status, 422);
+  const series = await resolveShare('https://v.douyin.com/Series/');
+  assert.equal(series.status, 422);
+  assert.match((await series.json()).error, /单|某一集/);
+  assert.deepEqual(calls, ['Episode', 'Foreign', 'Series'].map(code => `https://v.douyin.com/${code}/`));
+});
+
 test('Bilibili short links resolve only to HTTPS video pages on Bilibili', async t => {
   const fetchLocal = globalThis.fetch;
   const calls = [];

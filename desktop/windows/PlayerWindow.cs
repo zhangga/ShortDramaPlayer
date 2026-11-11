@@ -23,13 +23,42 @@ internal sealed class PlayerWindow : Form
     private const uint CtrlAltNoRepeat = 0x4003;
     private const string PauseMediaScript = "document.querySelectorAll('video,audio').forEach(media => media.pause())";
     private const string BilibiliVideoSelector = "document.querySelector('#live-player video, #bilibili-player video, .bpx-player-container video') || document.querySelector('video')";
-    private const string BilibiliAspectScript = "(() => { const video = (" + BilibiliVideoSelector +
-        "); return video?.videoHeight ? video.videoWidth / video.videoHeight : null; })()";
-    private const string ToggleBilibiliPlaybackScript = "(() => { const video = (" + BilibiliVideoSelector +
-        "); if (!video) return; if (video.paused) video.play().catch(() => {}); else video.pause(); })()";
+    private const string DouyinVideoSelector = @"(() => {
+        const selected = document.querySelector('video.shortdrama-taskbar-video');
+        if (document.documentElement.classList.contains('shortdrama-taskbar'))
+            return selected?.videoHeight ? selected : null;
+        let active = null;
+        let largestArea = 0;
+        for (const video of document.querySelectorAll('video')) {
+            if (!video.videoHeight || video.checkVisibility?.({ checkOpacity: true, checkVisibilityCSS: true }) === false) continue;
+            const rect = video.getBoundingClientRect();
+            const width = Math.max(0, Math.min(innerWidth, rect.right) - Math.max(0, rect.left));
+            const height = Math.max(0, Math.min(innerHeight, rect.bottom) - Math.max(0, rect.top));
+            const area = width * height;
+            if (!area) continue;
+            if (!active || (active.paused && !video.paused) || (active.paused === video.paused && area > largestArea)) {
+                active = video;
+                largestArea = area;
+            }
+        }
+        return active;
+    })()";
     private const string SiteTaskbarWorld = "ShortDramaPlayerTaskbar";
     private const string SiteTaskbarBinding = "sendShortDramaTaskbarCommand";
-    private const string BilibiliPreviewScript = @"(() => {
+    private static string AspectScript(string selector)
+    {
+        return "(() => { const video = (" + selector + "); return video?.videoHeight ? video.videoWidth / video.videoHeight : null; })()";
+    }
+
+    private static string TogglePlaybackScript(string selector)
+    {
+        return "(() => { const video = (" + selector +
+            "); if (!video) return; if (video.paused) video.play().catch(() => {}); else video.pause(); })()";
+    }
+
+    private static string PreviewScript(string selector)
+    {
+        return @"(() => {
         if (!document.getElementById('shortdrama-taskbar-style')) {
             const style = document.createElement('style');
             style.id = 'shortdrama-taskbar-style';
@@ -50,24 +79,49 @@ internal sealed class PlayerWindow : Form
                 }`;
             document.head.append(style);
         }
-        const video = (" + BilibiliVideoSelector + @");
+        const video = (" + selector + @");
         document.querySelectorAll('.shortdrama-taskbar-video').forEach(previous => {
             if (previous !== video) previous.classList.remove('shortdrama-taskbar-video');
         });
         if (video) video.classList.add('shortdrama-taskbar-video');
         document.documentElement.classList.add('shortdrama-taskbar');
     })();";
-    private const string ClearBilibiliPreviewScript =
+    }
+
+    private const string ClearPreviewScript =
         "document.documentElement.classList.remove('shortdrama-taskbar', 'shortdrama-taskbar-cropped', 'shortdrama-taskbar-expanded'); " +
         "document.querySelectorAll('.shortdrama-taskbar-video').forEach(video => video.classList.remove('shortdrama-taskbar-video')); " +
         "document.getElementById('shortdrama-taskbar-style')?.remove();";
     private const double MinimumExpandedZoom = 0.10;
     private const double DefaultExpandedZoom = 0.40;
     private const double MaximumExpandedZoom = 0.65;
-    private const string BilibiliHome = "https://www.bilibili.com/";
     private const string BrowseBilibiliCommand = "bilibili:browse:";
+    private const string BrowseDouyinCommand = "douyin:browse:";
+
+    private sealed class SiteView
+    {
+        internal readonly WebView2 Browser = new WebView2();
+        internal readonly string Name;
+        internal readonly string Home;
+        internal readonly string Profile;
+        internal readonly string VideoSelector;
+        internal readonly Func<Uri, bool> AllowsUrl;
+        internal Task Ready;
+        internal bool HasTaskbarBinding;
+
+        internal SiteView(string name, string home, string profile, string videoSelector, Func<Uri, bool> allowsUrl)
+        {
+            Name = name;
+            Home = home;
+            Profile = profile;
+            VideoSelector = videoSelector;
+            AllowsUrl = allowsUrl;
+        }
+    }
+
     private readonly WebView2 browser = new WebView2();
-    private readonly WebView2 bilibiliBrowser = new WebView2();
+    private readonly SiteView bilibili = new SiteView("B 站", "https://www.bilibili.com/", "bilibili-webview", BilibiliVideoSelector, IsBilibiliSite);
+    private readonly SiteView douyin = new SiteView("抖音", "https://www.douyin.com/series", "douyin-webview", DouyinVideoSelector, IsDouyinSite);
     private readonly Button sizeButton = new Button();
     private readonly Button taskbarButton = new Button();
     private readonly Button playBilibiliVideoButton = new Button();
@@ -81,11 +135,9 @@ internal sealed class PlayerWindow : Form
     private Uri home;
     private CoreWebView2Frame bilibiliFrame;
     private CoreWebView2Frame taskbarBilibiliFrame;
-    private Task bilibiliBrowserReady;
-    private bool browsingBilibili;
-    private int bilibiliBrowseRequest;
+    private SiteView browsingSite;
+    private int siteBrowseRequest;
     private readonly JavaScriptSerializer siteTaskbarJson = new JavaScriptSerializer();
-    private bool siteTaskbarBindingReady;
     private int siteTaskbarContext;
     private bool hotkeyRegistered;
     private bool compact;
@@ -146,10 +198,13 @@ internal sealed class PlayerWindow : Form
         browser.Visible = false;
         Controls.Add(browser);
 
-        bilibiliBrowser.Dock = DockStyle.Fill;
-        bilibiliBrowser.DefaultBackgroundColor = BackColor;
-        bilibiliBrowser.Visible = false;
-        Controls.Add(bilibiliBrowser);
+        foreach (var view in new[] { bilibili, douyin })
+        {
+            view.Browser.Dock = DockStyle.Fill;
+            view.Browser.DefaultBackgroundColor = BackColor;
+            view.Browser.Visible = false;
+            Controls.Add(view.Browser);
+        }
 
         loading.Dock = DockStyle.Fill;
         loading.Text = "正在启动播放器…";
@@ -199,7 +254,7 @@ internal sealed class PlayerWindow : Form
         returnToPlayerButton.ForeColor = Color.White;
         returnToPlayerButton.UseVisualStyleBackColor = false;
         returnToPlayerButton.Visible = false;
-        returnToPlayerButton.Click += async delegate { await ReturnFromBilibiliSite(); };
+        returnToPlayerButton.Click += async delegate { await ReturnFromSite(); };
         toolbar.Controls.Add(returnToPlayerButton);
 
         shortcutLabel.Text = Shortcut + " 收起／恢复";
@@ -271,7 +326,7 @@ internal sealed class PlayerWindow : Form
                 {
                     if (IsBilibiliSite(target))
                     {
-                        await OpenBilibiliSite(target.AbsoluteUri);
+                        await OpenSite(bilibili, target.AbsoluteUri);
                         return;
                     }
                     try { Process.Start(new ProcessStartInfo(target.AbsoluteUri) { UseShellExecute = true }); }
@@ -286,7 +341,7 @@ internal sealed class PlayerWindow : Form
             {
                 if (nav.IsSuccess) loading.Visible = false;
                 else if (!browser.Visible) loading.Text = "加载失败。请关闭窗口后重新打开。";
-                if (!browsingBilibili)
+                if (browsingSite == null)
                 {
                     browser.Visible = nav.IsSuccess || browser.Visible;
                     taskbarButton.Enabled = nav.IsSuccess;
@@ -301,10 +356,15 @@ internal sealed class PlayerWindow : Form
                 if (command == null) return;
                 if (command.StartsWith(BrowseBilibiliCommand, StringComparison.Ordinal))
                 {
-                    await OpenBilibiliSite(command.Substring(BrowseBilibiliCommand.Length));
+                    await OpenSite(bilibili, command.Substring(BrowseBilibiliCommand.Length));
                     return;
                 }
-                if (!browsingBilibili) await HandleTaskbarCommand(command);
+                if (command.StartsWith(BrowseDouyinCommand, StringComparison.Ordinal))
+                {
+                    await OpenSite(douyin, command.Substring(BrowseDouyinCommand.Length));
+                    return;
+                }
+                if (browsingSite == null) await HandleTaskbarCommand(command);
             };
             core.IsMuted = WindowState == FormWindowState.Minimized;
             browser.Source = home;
@@ -328,43 +388,53 @@ internal sealed class PlayerWindow : Form
 
     private static bool IsBilibiliSite(Uri url)
     {
-        return url != null && url.IsAbsoluteUri && url.Scheme == Uri.UriSchemeHttps && url.IsDefaultPort
-            && url.UserInfo.Length == 0 && (url.IdnHost == "bilibili.com" || url.IdnHost == "b23.tv"
+        return IsHttpsSite(url) && (url.IdnHost == "bilibili.com" || url.IdnHost == "b23.tv"
                 || url.IdnHost.EndsWith(".bilibili.com", StringComparison.Ordinal));
     }
 
-    private async Task InitializeBilibiliBrowser()
+    private static bool IsDouyinSite(Uri url)
     {
-        string profile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "data", "bilibili-webview");
+        return IsHttpsSite(url) && (url.IdnHost == "douyin.com" || url.IdnHost.EndsWith(".douyin.com", StringComparison.Ordinal));
+    }
+
+    private static bool IsHttpsSite(Uri url)
+    {
+        return url != null && url.IsAbsoluteUri && url.Scheme == Uri.UriSchemeHttps && url.IsDefaultPort && url.UserInfo.Length == 0;
+    }
+
+    private async Task InitializeSiteBrowser(SiteView view)
+    {
+        string profile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "data", view.Profile);
         var environment = await CoreWebView2Environment.CreateAsync(null, profile);
         if (IsDisposed) return;
-        await bilibiliBrowser.EnsureCoreWebView2Async(environment);
+        await view.Browser.EnsureCoreWebView2Async(environment);
         if (IsDisposed) return;
-        CoreWebView2 site = bilibiliBrowser.CoreWebView2;
+        CoreWebView2 site = view.Browser.CoreWebView2;
         site.Settings.AreHostObjectsAllowed = false;
         site.Settings.IsWebMessageEnabled = false;
         site.Settings.AreDevToolsEnabled = false;
         site.NavigationStarting += delegate(object _, CoreWebView2NavigationStartingEventArgs nav)
         {
             Uri target;
-            nav.Cancel = (browsingBilibili && inTaskbar)
-                || !Uri.TryCreate(nav.Uri, UriKind.Absolute, out target) || !IsBilibiliSite(target);
+            nav.Cancel = (browsingSite == view && inTaskbar)
+                || !Uri.TryCreate(nav.Uri, UriKind.Absolute, out target) || !view.AllowsUrl(target);
         };
         site.NewWindowRequested += delegate(object _, CoreWebView2NewWindowRequestedEventArgs pop)
         {
             pop.Handled = true;
             Uri target;
-            if (browsingBilibili && pop.IsUserInitiated && Uri.TryCreate(pop.Uri, UriKind.Absolute, out target) && IsBilibiliSite(target))
+            if (browsingSite == view && !inTaskbar && pop.IsUserInitiated &&
+                Uri.TryCreate(pop.Uri, UriKind.Absolute, out target) && view.AllowsUrl(target))
                 site.Navigate(target.AbsoluteUri);
         };
         site.LaunchingExternalUriScheme += delegate(object _, CoreWebView2LaunchingExternalUriSchemeEventArgs launch) { launch.Cancel = true; };
         site.PermissionRequested += delegate(object _, CoreWebView2PermissionRequestedEventArgs permission) { permission.State = CoreWebView2PermissionState.Deny; };
-        site.SourceChanged += delegate { UpdateBilibiliPlayButton(); };
-        site.NavigationCompleted += delegate { UpdateBilibiliPlayButton(); };
+        site.SourceChanged += delegate { if (browsingSite == view) UpdateSiteButtons(); };
+        site.NavigationCompleted += delegate { if (browsingSite == view) UpdateSiteButtons(); };
         site.GetDevToolsProtocolEventReceiver("Runtime.bindingCalled").DevToolsProtocolEventReceived += async delegate(
             object _, CoreWebView2DevToolsProtocolEventReceivedEventArgs received)
         {
-            if (!browsingBilibili || !inTaskbar || siteTaskbarContext == 0 || !CanUseBilibiliSiteTaskbar()) return;
+            if (browsingSite != view || !inTaskbar || siteTaskbarContext == 0 || !CanUseSiteTaskbar(view)) return;
             var payload = siteTaskbarJson.Deserialize<Dictionary<string, object>>(received.ParameterObjectAsJson);
             if ((string)payload["name"] != SiteTaskbarBinding || Convert.ToInt32(payload["executionContextId"]) != siteTaskbarContext) return;
             try
@@ -378,78 +448,81 @@ internal sealed class PlayerWindow : Form
         UpdateWebViewMute();
     }
 
-    private async Task OpenBilibiliSite(string url)
+    private async Task OpenSite(SiteView view, string url)
     {
         bool resume = string.IsNullOrEmpty(url);
         Uri target;
-        if (inTaskbar || !Uri.TryCreate(resume ? BilibiliHome : url, UriKind.Absolute, out target) || !IsBilibiliSite(target)) return;
+        if (inTaskbar || !Uri.TryCreate(resume ? view.Home : url, UriKind.Absolute, out target) || !view.AllowsUrl(target)) return;
 
-        int request = ++bilibiliBrowseRequest;
+        int request = ++siteBrowseRequest;
         try
         {
-            SetBilibiliView(true);
+            SiteView previous = browsingSite;
+            SetSiteView(view);
             await PausePlayerMedia();
-            if (IsDisposed || request != bilibiliBrowseRequest) return;
-            if (bilibiliBrowserReady == null) bilibiliBrowserReady = InitializeBilibiliBrowser();
-            await bilibiliBrowserReady;
-            if (IsDisposed || request != bilibiliBrowseRequest) return;
-            if (!resume || !IsBilibiliSite(bilibiliBrowser.Source)) bilibiliBrowser.CoreWebView2.Navigate(target.AbsoluteUri);
-            if (WindowState != FormWindowState.Minimized) bilibiliBrowser.Focus();
+            if (previous != null && previous != view) await PauseSite(previous);
+            if (IsDisposed || request != siteBrowseRequest) return;
+            if (view.Ready == null) view.Ready = InitializeSiteBrowser(view);
+            await view.Ready;
+            if (IsDisposed || request != siteBrowseRequest) return;
+            if (!resume || !view.AllowsUrl(view.Browser.Source)) view.Browser.CoreWebView2.Navigate(target.AbsoluteUri);
+            if (WindowState != FormWindowState.Minimized) view.Browser.Focus();
         }
         catch (Exception)
         {
-            if (bilibiliBrowserReady != null && bilibiliBrowserReady.IsFaulted) bilibiliBrowserReady = null;
-            if (IsDisposed || request != bilibiliBrowseRequest) return;
-            SetBilibiliView(false);
-            MessageBox.Show(this, "无法打开 B 站页面，请重试。", AppTitle);
+            if (view.Ready != null && view.Ready.IsFaulted) view.Ready = null;
+            if (IsDisposed || request != siteBrowseRequest) return;
+            SetSiteView(null);
+            MessageBox.Show(this, "无法打开" + view.Name + "页面，请重试。", AppTitle);
         }
     }
 
-    private void SetBilibiliView(bool visible)
+    private void SetSiteView(SiteView view)
     {
-        browsingBilibili = visible;
-        browser.Visible = !visible;
-        bilibiliBrowser.Visible = visible;
-        returnToPlayerButton.Visible = visible;
-        playBilibiliVideoButton.Visible = visible;
-        shortcutLabel.Visible = !visible;
-        if (visible) UpdateBilibiliPlayButton();
-        else taskbarButton.Enabled = browser.CoreWebView2 != null;
+        browsingSite = view;
+        browser.Visible = view == null;
+        bilibili.Browser.Visible = view == bilibili;
+        douyin.Browser.Visible = view == douyin;
+        returnToPlayerButton.Visible = view != null;
+        playBilibiliVideoButton.Visible = view == bilibili;
+        shortcutLabel.Visible = view == null;
+        UpdateSiteButtons();
         UpdateWebViewMute();
     }
 
     private Uri BilibiliVideoPage()
     {
-        Uri current = bilibiliBrowser.CoreWebView2 == null ? null : bilibiliBrowser.Source;
+        Uri current = bilibili.Browser.CoreWebView2 == null ? null : bilibili.Browser.Source;
         return IsBilibiliSite(current) && (current.IdnHost == "www.bilibili.com" || current.IdnHost == "m.bilibili.com" || current.IdnHost == "bilibili.com")
             && Regex.IsMatch(current.AbsolutePath, @"^/video/(BV[A-Za-z0-9]{10}|av[1-9]\d{0,17})/?$") ? current : null;
     }
 
-    private void UpdateBilibiliPlayButton()
+    private void UpdateSiteButtons()
     {
-        if (!browsingBilibili) return;
-        playBilibiliVideoButton.Enabled = BilibiliVideoPage() != null;
-        taskbarButton.Enabled = CanUseBilibiliSiteTaskbar();
+        playBilibiliVideoButton.Enabled = browsingSite == bilibili && BilibiliVideoPage() != null;
+        taskbarButton.Enabled = browsingSite == null ? browser.CoreWebView2 != null : CanUseSiteTaskbar(browsingSite);
     }
 
-    private bool CanUseBilibiliSiteTaskbar()
+    private bool CanUseSiteTaskbar(SiteView view)
     {
+        Uri current = view.Browser.CoreWebView2 == null ? null : view.Browser.Source;
+        if (view == douyin)
+            return IsDouyinSite(current) && (current.IdnHost == "www.douyin.com" || current.IdnHost == "douyin.com");
         if (BilibiliVideoPage() != null) return true;
-        Uri current = bilibiliBrowser.CoreWebView2 == null ? null : bilibiliBrowser.Source;
         return IsBilibiliSite(current) && current.IdnHost == "live.bilibili.com"
             && Regex.IsMatch(current.AbsolutePath, @"^/[1-9]\d{0,17}/?$");
     }
 
-    private async Task PrepareBilibiliSiteTaskbar()
+    private async Task<int> PrepareSiteTaskbar(SiteView view)
     {
-        CoreWebView2 site = bilibiliBrowser.CoreWebView2;
-        if (!siteTaskbarBindingReady)
+        CoreWebView2 site = view.Browser.CoreWebView2;
+        if (!view.HasTaskbarBinding)
         {
             // The site's own JavaScript never receives the host's taskbar binding.
             await site.CallDevToolsProtocolMethodAsync("Runtime.enable", "{}");
             await site.CallDevToolsProtocolMethodAsync("Runtime.addBinding",
                 siteTaskbarJson.Serialize(new { name = SiteTaskbarBinding, executionContextName = SiteTaskbarWorld }));
-            siteTaskbarBindingReady = true;
+            view.HasTaskbarBinding = true;
         }
 
         var tree = siteTaskbarJson.Deserialize<Dictionary<string, object>>(
@@ -458,44 +531,46 @@ internal sealed class PlayerWindow : Form
         var world = siteTaskbarJson.Deserialize<Dictionary<string, object>>(
             await site.CallDevToolsProtocolMethodAsync("Page.createIsolatedWorld",
                 siteTaskbarJson.Serialize(new { frameId = frame["id"], worldName = SiteTaskbarWorld })));
-        siteTaskbarContext = Convert.ToInt32(world["executionContextId"]);
+        return Convert.ToInt32(world["executionContextId"]);
     }
 
-    private async Task ExecuteInBilibiliSiteTaskbar(string script, int context)
+    private async Task ExecuteInSiteTaskbar(SiteView view, string script, int context)
     {
         string result;
         try
         {
-            result = await bilibiliBrowser.CoreWebView2.CallDevToolsProtocolMethodAsync("Runtime.evaluate",
+            result = await view.Browser.CoreWebView2.CallDevToolsProtocolMethodAsync("Runtime.evaluate",
                 siteTaskbarJson.Serialize(new { expression = script, contextId = context }));
         }
-        catch (COMException error) { throw new InvalidOperationException("Bilibili taskbar context is unavailable.", error); }
+        catch (COMException error) { throw new InvalidOperationException("Site taskbar context is unavailable.", error); }
         var response = siteTaskbarJson.Deserialize<Dictionary<string, object>>(result);
-        if (response.ContainsKey("exceptionDetails")) throw new InvalidOperationException("Bilibili taskbar script failed.");
+        if (response.ContainsKey("exceptionDetails")) throw new InvalidOperationException("Site taskbar script failed.");
     }
 
-    private async Task MountBilibiliSiteTaskbar()
+    private async Task MountSiteTaskbar(SiteView view)
     {
         string player = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "player");
         string controls = File.ReadAllText(Path.Combine(player, "src", "client", "js", "taskbar-controls.js"));
-        string overlay = File.ReadAllText(Path.Combine(player, "desktop", "windows", "bilibili-taskbar.js"));
-        await ExecuteInBilibiliSiteTaskbar("(() => {\n" + controls + "\n" + overlay +
-            "\nmountBilibiliTaskbar(action => " + SiteTaskbarBinding + "('taskbar:' + action)); })();", siteTaskbarContext);
+        string overlay = File.ReadAllText(Path.Combine(player, "desktop", "windows", "site-taskbar.js"));
+        await ExecuteInSiteTaskbar(view, "(() => {\n" + controls + "\n" + overlay +
+            "\nmountSiteTaskbar(action => " + SiteTaskbarBinding + "('taskbar:' + action)); })();", siteTaskbarContext);
     }
 
-    private async Task ReturnFromBilibiliSite()
+    private async Task ReturnFromSite()
     {
-        bilibiliBrowseRequest++;
-        SetBilibiliView(false);
-        await PauseBilibiliSite();
+        if (inTaskbar || browsingSite == null) return;
+        siteBrowseRequest++;
+        SiteView view = browsingSite;
+        SetSiteView(null);
+        await PauseSite(view);
     }
 
     private async Task PlayBilibiliPage()
     {
         Uri video = BilibiliVideoPage();
         if (video == null) return;
-        await ReturnFromBilibiliSite();
-        if (!IsDisposed && !browsingBilibili && IsLocal(browser.CoreWebView2.Source))
+        await ReturnFromSite();
+        if (!IsDisposed && browsingSite == null && IsLocal(browser.CoreWebView2.Source))
             browser.CoreWebView2.PostWebMessageAsString("bilibili:play:" + video.AbsoluteUri);
     }
 
@@ -564,35 +639,32 @@ internal sealed class PlayerWindow : Form
     private async Task EnterTaskbar()
     {
         if (inTaskbar || taskbarBusy || browser.CoreWebView2 == null) return;
-        bool site = browsingBilibili;
-        if (site && !CanUseBilibiliSiteTaskbar()) return;
-        Uri sitePage = site ? bilibiliBrowser.Source : null;
+        SiteView view = browsingSite;
+        if (view != null && !CanUseSiteTaskbar(view)) return;
+        Uri sitePage = view == null ? null : view.Browser.Source;
         taskbarBusy = true;
         try
         {
             Rectangle slot = await Task.Run(() => TaskbarPlacement.Find());
-            if (IsDisposed || WindowState == FormWindowState.Minimized) return;
+            if (IsDisposed || WindowState == FormWindowState.Minimized || view != browsingSite) return;
             if (slot.IsEmpty)
             {
                 MessageBox.Show(this, "主任务栏没有足够的空位，或已开启自动隐藏。可以继续使用竖屏小窗。", AppTitle);
                 return;
             }
-            CoreWebView2Frame frame = site ? null : bilibiliFrame;
-            double? aspect = await ReadTaskbarAspect(frame);
-            if (IsDisposed || WindowState == FormWindowState.Minimized || site != browsingBilibili || (!site && frame != bilibiliFrame)) return;
+            CoreWebView2Frame frame = view == null ? bilibiliFrame : null;
+            double? aspect = await ReadTaskbarAspect(view, frame);
+            if (IsDisposed || WindowState == FormWindowState.Minimized || view != browsingSite || (view == null && frame != bilibiliFrame)) return;
             if (!aspect.HasValue)
             {
                 MessageBox.Show(this, "请先打开并播放视频，再点「任务栏」。", AppTitle);
                 return;
             }
-            if (site)
+            if (view != null)
             {
-                await PrepareBilibiliSiteTaskbar();
-                if (IsDisposed || !browsingBilibili || WindowState == FormWindowState.Minimized || sitePage != bilibiliBrowser.Source)
-                {
-                    siteTaskbarContext = 0;
-                    return;
-                }
+                int context = await PrepareSiteTaskbar(view);
+                if (IsDisposed || view != browsingSite || WindowState == FormWindowState.Minimized || sitePage != view.Browser.Source) return;
+                siteTaskbarContext = context;
             }
             taskbarAspect = aspect.Value;
             if (!compact) ToggleSize();
@@ -603,10 +675,19 @@ internal sealed class PlayerWindow : Form
             inTaskbar = true;
             taskbarBilibiliFrame = frame;
             taskbarExpanded = false;
-            PlaceTaskbar(slot);
-            await UpdateTaskbarView();
-            if (site) await MountBilibiliSiteTaskbar();
-            else await browser.CoreWebView2.ExecuteScriptAsync("document.querySelector('.taskbar-preview-button')?.focus()");
+            if (view != null)
+            {
+                await UpdateTaskbarView();
+                if (IsDisposed || !inTaskbar) return;
+                PlaceTaskbar(slot);
+                await MountSiteTaskbar(view);
+            }
+            else
+            {
+                PlaceTaskbar(slot);
+                await UpdateTaskbarView();
+                await browser.CoreWebView2.ExecuteScriptAsync("document.querySelector('.taskbar-preview-button')?.focus()");
+            }
             if (!IsDisposed && inTaskbar) taskbarTimer.Start();
             return;
         }
@@ -617,7 +698,7 @@ internal sealed class PlayerWindow : Form
         }
         if (!IsDisposed && inTaskbar) await LeaveTaskbar();
         siteTaskbarContext = 0;
-        if (!IsDisposed && site && browsingBilibili) MessageBox.Show(this, "无法进入任务栏模式，请重试。", AppTitle);
+        if (!IsDisposed && view != null && view == browsingSite) MessageBox.Show(this, "无法进入任务栏模式，请重试。", AppTitle);
     }
 
     private async Task RefreshTaskbar()
@@ -634,7 +715,7 @@ internal sealed class PlayerWindow : Form
                 return;
             }
             CoreWebView2Frame frame = taskbarBilibiliFrame;
-            double? aspect = frame != null && frame != bilibiliFrame ? null : await ReadTaskbarAspect(frame);
+            double? aspect = frame != null && frame != bilibiliFrame ? null : await ReadTaskbarAspect(browsingSite, frame);
             if (IsDisposed || !inTaskbar || WindowState == FormWindowState.Minimized) return;
             if (!aspect.HasValue) await LeaveTaskbar();
             else
@@ -653,16 +734,16 @@ internal sealed class PlayerWindow : Form
         if (!IsDisposed && inTaskbar) await LeaveTaskbar();
     }
 
-    private async Task<double?> ReadTaskbarAspect(CoreWebView2Frame frame)
+    private async Task<double?> ReadTaskbarAspect(SiteView view, CoreWebView2Frame frame)
     {
         string result;
-        if (browsingBilibili)
+        if (view != null)
         {
-            if (!CanUseBilibiliSiteTaskbar()) return null;
-            result = await bilibiliBrowser.CoreWebView2.ExecuteScriptAsync(BilibiliAspectScript);
-            if (result == "null" && inTaskbar) return taskbarAspect;
+            if (!CanUseSiteTaskbar(view)) return null;
+            result = await view.Browser.CoreWebView2.ExecuteScriptAsync(AspectScript(view.VideoSelector));
+            if (result == "null" && inTaskbar && view == bilibili) return taskbarAspect;
         }
-        else if (frame != null) result = await frame.ExecuteScriptAsync(BilibiliAspectScript);
+        else if (frame != null) result = await frame.ExecuteScriptAsync(AspectScript(BilibiliVideoSelector));
         else result = await browser.CoreWebView2.ExecuteScriptAsync(
             "(() => { const v = document.querySelector('.theater-view video'); return v ? (v.videoHeight ? v.videoWidth / v.videoHeight : 0) : null; })()");
         if (result == "null") return null;
@@ -717,9 +798,9 @@ internal sealed class PlayerWindow : Form
         {
             CoreWebView2Frame frame = taskbarBilibiliFrame;
             if (siteTaskbarContext != 0)
-                await ExecuteInBilibiliSiteTaskbar(ToggleBilibiliPlaybackScript, siteTaskbarContext);
+                await ExecuteInSiteTaskbar(browsingSite, TogglePlaybackScript(browsingSite.VideoSelector), siteTaskbarContext);
             else if (frame == null) browser.CoreWebView2.PostWebMessageAsString("taskbar:play");
-            else if (frame == bilibiliFrame) await frame.ExecuteScriptAsync(ToggleBilibiliPlaybackScript);
+            else if (frame == bilibiliFrame) await frame.ExecuteScriptAsync(TogglePlaybackScript(BilibiliVideoSelector));
         }
         catch (InvalidOperationException) { }
     }
@@ -836,7 +917,9 @@ internal sealed class PlayerWindow : Form
         if (siteTaskbarContext != 0)
         {
             string cursor = taskbarExpanded ? "grab" : "pointer";
-            await ExecuteInBilibiliSiteTaskbar(BilibiliPreviewScript +
+            SiteView view = browsingSite;
+            await ExecuteInSiteTaskbar(view, PreviewScript(view.VideoSelector) +
+                (view == douyin ? "if (!document.querySelector('.shortdrama-taskbar-video')) throw new Error('Video is no longer available');" : "") +
                 "document.documentElement.classList.toggle('shortdrama-taskbar-cropped', " + cropped + ");" +
                 "document.documentElement.classList.toggle('shortdrama-taskbar-expanded', " + expanded + ");" +
                 "document.getElementById('shortdrama-taskbar-input')?.style.setProperty('cursor', '" + cursor + "', 'important');",
@@ -858,7 +941,7 @@ internal sealed class PlayerWindow : Form
             if (frame != null && frame == bilibiliFrame)
             {
                 string frameCropped = !taskbarExpanded && taskbarStripZoom > 1 ? "true" : "false";
-                await frame.ExecuteScriptAsync(BilibiliPreviewScript +
+                await frame.ExecuteScriptAsync(PreviewScript(BilibiliVideoSelector) +
                     "document.documentElement.classList.toggle('shortdrama-taskbar-cropped', " + frameCropped + ");");
             }
         }
@@ -882,6 +965,7 @@ internal sealed class PlayerWindow : Form
     {
         if (!inTaskbar || IsDisposed) return;
         CoreWebView2Frame frame = taskbarBilibiliFrame;
+        SiteView view = browsingSite;
         int context = siteTaskbarContext;
         siteTaskbarContext = 0;
         RestoreCompactBounds();
@@ -889,15 +973,15 @@ internal sealed class PlayerWindow : Form
         {
             if (context != 0)
             {
-                await ExecuteInBilibiliSiteTaskbar(
-                    "document.getElementById('shortdrama-taskbar-input')?.remove();" + ClearBilibiliPreviewScript, context);
+                await ExecuteInSiteTaskbar(view,
+                    "document.getElementById('shortdrama-taskbar-input')?.remove();" + ClearPreviewScript, context);
                 return;
             }
             await browser.CoreWebView2.ExecuteScriptAsync(
                 "document.documentElement.classList.remove('taskbar-preview', 'taskbar-cropped', 'taskbar-expanded'); " +
                 "document.querySelector('.player-container, .bilibili-frame')?.focus()");
             if (frame != null && frame == bilibiliFrame)
-                await frame.ExecuteScriptAsync(ClearBilibiliPreviewScript);
+                await frame.ExecuteScriptAsync(ClearPreviewScript);
         }
         catch (InvalidOperationException) { }
     }
@@ -912,7 +996,7 @@ internal sealed class PlayerWindow : Form
         if (!minimized) return;
         taskbarClickTimer.Stop();
         taskbarDragOffset = null;
-        if (browsingBilibili) await PauseBilibiliSite();
+        if (browsingSite != null) await PauseSite(browsingSite);
         else await PausePlayerMedia();
     }
 
@@ -920,9 +1004,12 @@ internal sealed class PlayerWindow : Form
     {
         bool minimized = WindowState == FormWindowState.Minimized;
         CoreWebView2 player = browser.CoreWebView2;
-        CoreWebView2 site = bilibiliBrowser.CoreWebView2;
-        if (player != null) player.IsMuted = minimized || browsingBilibili;
-        if (site != null) site.IsMuted = minimized || !browsingBilibili;
+        if (player != null) player.IsMuted = minimized || browsingSite != null;
+        foreach (var view in new[] { bilibili, douyin })
+        {
+            CoreWebView2 site = view.Browser.CoreWebView2;
+            if (site != null) site.IsMuted = minimized || browsingSite != view;
+        }
     }
 
     private async Task PausePlayerMedia()
@@ -937,10 +1024,10 @@ internal sealed class PlayerWindow : Form
         catch (InvalidOperationException) { }
     }
 
-    private async Task PauseBilibiliSite()
+    private async Task PauseSite(SiteView view)
     {
-        CoreWebView2 site = bilibiliBrowser.CoreWebView2;
-        if (site == null || !IsBilibiliSite(bilibiliBrowser.Source)) return;
+        CoreWebView2 site = view.Browser.CoreWebView2;
+        if (site == null || !view.AllowsUrl(view.Browser.Source)) return;
         try { await site.ExecuteScriptAsync(PauseMediaScript); }
         catch (InvalidOperationException) { }
     }
@@ -968,7 +1055,8 @@ internal sealed class PlayerWindow : Form
         taskbarClickTimer.Dispose();
         if (hotkeyRegistered) UnregisterHotKey(Handle, HotkeyId);
         browser.Dispose();
-        bilibiliBrowser.Dispose();
+        bilibili.Browser.Dispose();
+        douyin.Browser.Dispose();
         StopService();
         base.OnFormClosed(args);
     }

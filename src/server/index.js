@@ -119,6 +119,51 @@ app.get('/api/bilibili/short-link', async (req, res) => {
   }
 });
 
+function douyinPlaybackPage(link) {
+  if (!link || !['https:', 'http:'].includes(link.protocol) || link.port || link.username || link.password) return null;
+  if (/^(?:www\.|m\.)?douyin\.com$/.test(link.hostname)) {
+    const video = /^\/video\/([1-9]\d{0,19})\/?$/.exec(link.pathname);
+    if (video) return `https://www.douyin.com/video/${video[1]}`;
+    const episode = link.searchParams.get('modal_id');
+    if (/^\/series\/?$/.test(link.pathname) && /^[1-9]\d{0,19}$/.test(episode))
+      return `https://www.douyin.com/series?modal_id=${episode}`;
+  }
+  if (/^(?:www\.)?iesdouyin\.com$/.test(link.hostname)) {
+    const video = /^\/share\/video\/([1-9]\d{0,19})\/?$/.exec(link.pathname);
+    if (video) return `https://www.douyin.com/video/${video[1]}`;
+  }
+  return null;
+}
+
+app.post('/api/douyin/share-link', async (req, res) => {
+  const text = req.body?.text;
+  const input = typeof text === 'string' && text.length <= 2048 &&
+    /https?:\/\/(?:(?:www\.|m\.|v\.)?douyin\.com|(?:www\.)?iesdouyin\.com)\/[^\s<>"'，。！？；、【】（）]+/i.exec(text)?.[0];
+  if (!input) return res.status(400).json({ error: '请粘贴抖音视频、单集或分享短链接' });
+
+  let link = new URL(input);
+  const shortCode = link.hostname === 'v.douyin.com' && /^\/([A-Za-z0-9]{1,32})\/?$/.exec(link.pathname)?.[1];
+  if (shortCode) {
+    try {
+      const upstream = await fetch(`https://v.douyin.com/${shortCode}/`, { redirect: 'manual', signal: AbortSignal.timeout(6000) });
+      const location = upstream.headers.get('location');
+      await upstream.body?.cancel();
+      if (![301, 302, 303, 307, 308].includes(upstream.status) || !location)
+        return res.status(422).json({ error: '这条抖音短链接已失效或无法打开' });
+      link = new URL(location);
+      if (link.protocol !== 'https:') return res.status(422).json({ error: '这条短链接没有指向抖音视频' });
+    } catch (_) {
+      return res.status(502).json({ error: '抖音短链接暂时无法解析，请重试' });
+    }
+  }
+
+  const url = douyinPlaybackPage(link);
+  if (url) return res.json({ url });
+  if (/^(?:www\.)?iesdouyin\.com$/.test(link.hostname) && /^\/share\/playlet\/detail\//.test(link.pathname))
+    return res.status(422).json({ error: '这条链接指向整部短剧。请打开短剧频道，或复制某一集的分享链接。' });
+  return res.status(422).json({ error: '这条链接没有指向可打开的抖音视频或单集' });
+});
+
 app.get('/api/danmaku/:seriesId/:vid', async (req, res) => {
   const { seriesId, vid } = req.params;
   if (!/^\d{6,30}$/.test(seriesId) || !/^\d{6,30}$/.test(vid)) return res.status(400).json({ error: '剧集编号无效' });

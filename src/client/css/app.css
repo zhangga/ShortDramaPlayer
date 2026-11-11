@@ -203,7 +203,8 @@ html.platform-mac .app-header {
   background: #105c76;
 }
 
-.bilibili-view {
+.bilibili-view,
+.douyin-view {
   width: min(100%, 1120px);
   margin: 0 auto;
   padding: clamp(12px, 3vw, 24px);
@@ -211,27 +212,33 @@ html.platform-mac .app-header {
   gap: 12px;
 }
 
-.bilibili-view h1 {
+.bilibili-view h1,
+.douyin-view h1 {
   font-size: 22px;
 }
 
 .bilibili-toolbar,
-.bilibili-form {
+.bilibili-form,
+.site-link-toolbar,
+.site-link-form {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.bilibili-toolbar {
+.bilibili-toolbar,
+.site-link-toolbar {
   flex-wrap: wrap;
 }
 
-.bilibili-form {
+.bilibili-form,
+.site-link-form {
   flex: 1 1 300px;
   min-width: 0;
 }
 
-.bilibili-form input {
+.bilibili-form input,
+.site-link-form input {
   flex: 1;
   min-width: 0;
   color: var(--text-main);
@@ -253,6 +260,30 @@ html.platform-mac .app-header {
   cursor: pointer;
 }
 
+.site-link-form button {
+  background: #91434d;
+  color: #fff;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 9px 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.site-link-form button:not(:disabled):hover {
+  background: #a6505c;
+}
+
+.site-link-form button:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.douyin-channel {
+  border: 1px solid var(--border-color);
+  background: var(--bg-surface);
+}
+
 .bilibili-form button:hover {
   background: #136e8b;
 }
@@ -269,12 +300,14 @@ html.platform-mac .app-header {
 
 .bilibili-nav:focus-visible,
 .bilibili-form :focus-visible,
-.bilibili-original:focus-visible {
+.bilibili-original:focus-visible,
+.douyin-view :focus-visible {
   outline: 2px solid #8bd6ec;
   outline-offset: 2px;
 }
 
-.bilibili-error {
+.bilibili-error,
+.site-link-error {
   color: #ff9cae;
   font-size: 14px;
 }

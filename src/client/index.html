@@ -23,13 +23,13 @@
           <button class="nav-item" :class="{ active: currentTab === 'real-drama' && viewMode === 'catalog' }" @click="switchTab('real-drama')">🎭 真人短剧</button>
           <button class="nav-item" :class="{ active: currentTab === 'comic-drama' && viewMode === 'catalog' }" @click="switchTab('comic-drama')">🎨 精品漫剧</button>
           <button class="nav-item" :class="{ active: currentTab === 'ai-drama' && viewMode === 'catalog' }" @click="switchTab('ai-drama')">🤖 AI 短剧</button>
-          <button class="nav-item" :class="{ active: currentTab === 'history' && viewMode !== 'bilibili' }" @click="switchTab('history')">🕒 观影历史</button>
-          <button class="nav-item" :class="{ active: currentTab === 'favorites' && viewMode !== 'bilibili' }" @click="switchTab('favorites')">⭐ 我的收藏</button>
+          <button class="nav-item" :class="{ active: currentTab === 'history' && viewMode !== 'bilibili' && viewMode !== 'douyin' }" @click="switchTab('history')">🕒 观影历史</button>
+          <button class="nav-item" :class="{ active: currentTab === 'favorites' && viewMode !== 'bilibili' && viewMode !== 'douyin' }" @click="switchTab('favorites')">⭐ 我的收藏</button>
         </nav>
       </div>
 
       <div class="header-right">
-        <div v-if="viewMode !== 'bilibili'" class="search-box" :class="{ 'has-query': searchKeyword.trim() }" @focusout="onSearchFocusOut" @keydown.esc="showSearchHistory = false">
+        <div v-if="viewMode !== 'bilibili' && viewMode !== 'douyin'" class="search-box" :class="{ 'has-query': searchKeyword.trim() }" @focusout="onSearchFocusOut" @keydown.esc="showSearchHistory = false">
           <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
           <input 
             type="text" 
@@ -55,6 +55,8 @@
 
         <button v-if="!desktopState.browsing" type="button" class="nav-item bilibili-nav" :class="{ active: viewMode === 'bilibili' }"
           :aria-pressed="viewMode === 'bilibili'" @click="showBilibili">哔哩哔哩</button>
+        <button v-if="windowsDesktop" type="button" class="nav-item" :class="{ active: viewMode === 'douyin' }"
+          :aria-pressed="viewMode === 'douyin'" @click="showDouyin">抖音</button>
         <div v-if="macDesktop" class="mac-player-controls">
           <button v-if="desktopState.browsing" type="button" class="nav-item" @click="desktopCommand('bilibili:return')">返回播放器</button>
           <button type="button" class="nav-item" @click="desktopCommand('window:compact')">{{ desktopState.compact ? '大窗' : '小窗' }}</button>
@@ -306,6 +308,21 @@
       </section>
 
       <!-- 沉浸式剧场/播放器视图 -->
+      <section v-if="viewMode === 'douyin'" class="douyin-view" aria-labelledby="douyin-title">
+        <h1 id="douyin-title">抖音</h1>
+        <label for="douyin-link">视频或短剧单集的分享链接</label>
+        <div class="site-link-toolbar">
+          <form class="site-link-form" :aria-busy="douyinLoading" @submit.prevent="openDouyinVideo">
+            <input id="douyin-link" v-model="douyinInput" type="text" maxlength="2048"
+              :aria-invalid="Boolean(douyinError)" :aria-describedby="douyinError ? 'douyin-error' : undefined"
+              autocomplete="off" spellcheck="false" @input="douyinError = ''">
+            <button type="submit" :disabled="douyinLoading || !douyinInput.trim()">{{ douyinLoading ? '正在打开…' : '播放' }}</button>
+          </form>
+          <button type="button" class="nav-item douyin-channel" @click="browseDouyin">打开短剧频道</button>
+        </div>
+        <p v-if="douyinError" id="douyin-error" class="site-link-error" role="alert">{{ douyinError }}</p>
+      </section>
+
       <div v-if="viewMode === 'theater'" class="theater-view">
         <!-- 播放器主体 (竖屏 9:16) -->
         <div class="player-container" :class="{ 'is-fullscreen': isFullscreen, 'controls-hidden': isControlsHidden }" tabindex="-1" @pointermove="resetControlsTimer" @mousemove="resetControlsTimer" @click="resetControlsTimer">
