@@ -730,10 +730,13 @@ createApp({
     }
 
     function showDouyin() {
-      if (!windowsDesktop || viewMode.value === 'douyin') return;
-      leaveTheater();
-      closeActorDetail();
-      viewMode.value = 'douyin';
+      if (!windowsDesktop) return;
+      if (viewMode.value !== 'douyin') {
+        leaveTheater();
+        closeActorDetail();
+        viewMode.value = 'douyin';
+      }
+      browseDouyin();
     }
 
     function browseDouyin() {

@@ -186,7 +186,7 @@ test('Windows opens Bilibili in the desktop view and can send a video back to th
   assert.equal(messages.length, 2);
 });
 
-test('Windows opens Douyin links and ignores pending links when the user opens the channel', async () => {
+test('Windows opens the Douyin channel by default and ignores pending links when reopening it', async () => {
   const messages = [];
   let finishLink;
   const state = client(async (url, options) => {
@@ -196,17 +196,19 @@ test('Windows opens Douyin links and ignores pending links when the user opens t
   }, { window: { chrome: { webview: { postMessage: message => messages.push(message) } } } });
   state.showDouyin();
   assert.equal(state.viewMode.value, 'douyin');
+  const channel = 'douyin:browse:https://www.douyin.com/series';
+  assert.deepEqual(messages, [channel]);
   state.douyinInput.value = '复制打开抖音 https://v.douyin.com/Video/';
   const video = 'https://www.douyin.com/video/7445134423600762164';
   const opening = state.openDouyinVideo();
   finishLink(response({ url: video }));
   await opening;
   const pending = state.openDouyinVideo();
-  state.browseDouyin();
+  state.showDouyin();
   finishLink(response({ url: video }));
   await pending;
   assert.equal(state.douyinLoading.value, false);
-  assert.deepEqual(messages, [`douyin:browse:${video}`, 'douyin:browse:https://www.douyin.com/series']);
+  assert.deepEqual(messages, [channel, `douyin:browse:${video}`, channel]);
 });
 
 test('favoriting a long series sends metadata without its full episode list', async () => {

@@ -199,8 +199,57 @@ html.platform-mac .app-header {
   font-weight: 600;
 }
 
-.bilibili-nav.active {
-  background: #105c76;
+.site-entry {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 44px;
+  padding: 0 11px;
+  border: 1px solid var(--site-border);
+  border-radius: 10px;
+  background: var(--site-background);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.site-entry-bilibili {
+  --site-background: #15374a;
+  --site-border: #477b96;
+  --site-hover: #204b63;
+  --site-highlight: #8bd6ec;
+}
+
+.site-entry-douyin {
+  --site-background: #442936;
+  --site-border: #926079;
+  --site-hover: #5c3548;
+  --site-highlight: #ffabc7;
+}
+
+.site-entry:hover,
+.site-entry[aria-pressed="true"] {
+  background: var(--site-hover);
+  border-color: var(--site-highlight);
+}
+
+.site-entry:focus-visible {
+  outline: 2px solid var(--site-highlight);
+  outline-offset: 2px;
+}
+
+.site-entry img {
+  display: block;
+  flex-shrink: 0;
+}
+
+.site-entry-douyin img {
+  border-radius: 4px;
 }
 
 .bilibili-view,
@@ -298,7 +347,6 @@ html.platform-mac .app-header {
   font-size: 14px;
 }
 
-.bilibili-nav:focus-visible,
 .bilibili-form :focus-visible,
 .bilibili-original:focus-visible,
 .douyin-view :focus-visible {
@@ -3105,6 +3153,16 @@ html.platform-win .app-header { padding-right: 160px; }
 @media (max-width: 460px) {
   .app-header { gap: 6px; padding-inline: 8px; }
   .header-left { gap: 6px; }
+  .header-right { gap: 6px; }
+  .site-entry { gap: 4px; padding-inline: 7px; }
+  .header-right:has(.site-entry-douyin) .search-box {
+    width: clamp(88px, 26vw, 112px);
+    min-width: 0;
+    padding-left: 8px;
+  }
+  .header-right:has(.site-entry-douyin) .search-box:focus-within .search-icon,
+  .header-right:has(.site-entry-douyin) .search-box.has-query .search-icon { display: none; }
+  .header-right:has(.site-entry-douyin) .search-btn { padding-inline: 6px; }
   .player-header .back-btn { padding: 5px 7px; white-space: nowrap; }
   .player-header .player-actions { gap: 4px; flex-shrink: 0; }
   .player-header .fav-action-btn { display: none; }

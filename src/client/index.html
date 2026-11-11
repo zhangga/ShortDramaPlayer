@@ -53,10 +53,16 @@
           </div>
         </div>
 
-        <button v-if="!desktopState.browsing" type="button" class="nav-item bilibili-nav" :class="{ active: viewMode === 'bilibili' }"
-          :aria-pressed="viewMode === 'bilibili'" @click="showBilibili">哔哩哔哩</button>
-        <button v-if="windowsDesktop" type="button" class="nav-item" :class="{ active: viewMode === 'douyin' }"
-          :aria-pressed="viewMode === 'douyin'" @click="showDouyin">抖音</button>
+        <button v-if="!desktopState.browsing" type="button" class="site-entry site-entry-bilibili"
+          :aria-pressed="viewMode === 'bilibili'" @click="showBilibili">
+          <img src="/assets/bilibili-icon.png" alt="" width="20" height="20">
+          哔哩哔哩
+        </button>
+        <button v-if="windowsDesktop" type="button" class="site-entry site-entry-douyin"
+          :aria-pressed="viewMode === 'douyin'" @click="showDouyin">
+          <img src="/assets/douyin-icon.png" alt="" width="20" height="20">
+          抖音
+        </button>
         <div v-if="macDesktop" class="mac-player-controls">
           <button v-if="desktopState.browsing" type="button" class="nav-item" @click="desktopCommand('bilibili:return')">返回播放器</button>
           <button type="button" class="nav-item" @click="desktopCommand('window:compact')">{{ desktopState.compact ? '大窗' : '小窗' }}</button>
