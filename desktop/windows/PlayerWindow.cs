@@ -5,18 +5,24 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Globalization;
 using System.IO;
+using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
+using Microsoft.Win32;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
+[assembly: AssemblyTitle(PlayerWindow.AppTitle)]
+[assembly: AssemblyProduct(PlayerWindow.AppTitle)]
+
 internal sealed class PlayerWindow : Form
 {
-    private const string AppTitle = "短剧小窗";
+    internal const string AppTitle = "摸鱼侠";
     private const string Shortcut = "Ctrl + Alt + F9";
     private const int HotkeyId = 1;
     private const int WmHotkey = 0x0312;
@@ -54,6 +60,12 @@ internal sealed class PlayerWindow : Form
     {
         return "(() => { const video = (" + selector +
             "); if (!video) return; if (video.paused) video.play().catch(() => {}); else video.pause(); })()";
+    }
+
+    private static string FishingPlaybackScript(string selector)
+    {
+        return "(() => { const video = (" + selector +
+            "); return !!(video && !video.paused && !video.ended && !video.error && (video.currentSrc || video.srcObject)); })()";
     }
 
     private static string PreviewScript(string selector)
@@ -131,6 +143,13 @@ internal sealed class PlayerWindow : Form
     private readonly FlowLayoutPanel toolbar = new FlowLayoutPanel();
     private readonly System.Windows.Forms.Timer taskbarTimer = new System.Windows.Forms.Timer { Interval = 1500 };
     private readonly System.Windows.Forms.Timer taskbarClickTimer = new System.Windows.Forms.Timer();
+    private readonly System.Windows.Forms.Timer fishingTimer = new System.Windows.Forms.Timer { Interval = 1000 };
+    private readonly TaskCompletionSource<string> fishingExit = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+    private bool fishingSampling;
+    private bool fishingClosing;
+    private bool fishingReadyToClose;
+    private bool screenLocked;
+    private int fishingVisibilityRevision;
     private Process service;
     private Uri home;
     private CoreWebView2Frame bilibiliFrame;
@@ -265,6 +284,7 @@ internal sealed class PlayerWindow : Form
 
         Shown += Initialize;
         Resize += HandleResize;
+        fishingTimer.Tick += async delegate { await SampleFishingPlayback(); };
         taskbarTimer.Tick += async delegate { await RefreshTaskbar(); };
         taskbarClickTimer.Tick += async delegate
         {
@@ -275,6 +295,7 @@ internal sealed class PlayerWindow : Form
 
     private async void Initialize(object sender, EventArgs args)
     {
+        SystemEvents.SessionSwitch += OnFishingSessionSwitch;
         hotkeyRegistered = RegisterHotKey(Handle, HotkeyId, CtrlAltNoRepeat, (uint)Keys.F9);
         if (!hotkeyRegistered)
         {
@@ -368,6 +389,7 @@ internal sealed class PlayerWindow : Form
             };
             core.IsMuted = WindowState == FormWindowState.Minimized;
             browser.Source = home;
+            fishingTimer.Start();
         }
         catch (WebView2RuntimeNotFoundException)
         {
@@ -590,6 +612,10 @@ internal sealed class PlayerWindow : Form
         service = new Process { StartInfo = info, EnableRaisingEvents = true };
         service.OutputDataReceived += delegate(object _, DataReceivedEventArgs line)
         {
+            if (line.Data != null && line.Data.StartsWith("FISHING_EXIT=", StringComparison.Ordinal))
+                fishingExit.TrySetResult(DecodeFishingMessage(line.Data.Substring(13)));
+            if (line.Data != null && line.Data.StartsWith("FISHING_RECAP=", StringComparison.Ordinal))
+                DispatchFishing(delegate { ShowFishingRecap(DecodeFishingMessage(line.Data.Substring(14))); });
             int port;
             if (line.Data != null && line.Data.StartsWith("PLAYER_PORT=", StringComparison.Ordinal)
                 && int.TryParse(line.Data.Substring(12), NumberStyles.None, CultureInfo.InvariantCulture, out port)
@@ -755,6 +781,8 @@ internal sealed class PlayerWindow : Form
     private async Task HandleTaskbarCommand(string command)
     {
         if (!inTaskbar || WindowState == FormWindowState.Minimized) return;
+        if (command == "taskbar:click" || command == "taskbar:toggle" || command == "taskbar:play" ||
+            command == "taskbar:exit" || command == "taskbar:back") SendFishing("FISHING_RECAP");
         switch (command)
         {
             case "taskbar:click":
@@ -994,6 +1022,7 @@ internal sealed class PlayerWindow : Form
         wasMinimized = minimized;
         UpdateWebViewMute();
         if (!minimized) return;
+        StopFishingPlayback();
         taskbarClickTimer.Stop();
         taskbarDragOffset = null;
         if (browsingSite != null) await PauseSite(browsingSite);
@@ -1032,6 +1061,93 @@ internal sealed class PlayerWindow : Form
         catch (InvalidOperationException) { }
     }
 
+    private string FishingMode()
+    {
+        if (fishingClosing || screenLocked || !Visible || WindowState == FormWindowState.Minimized) return "off";
+        return inTaskbar ? (taskbarExpanded ? "compact" : "taskbar") : (compact ? "compact" : "large");
+    }
+
+    private async Task SampleFishingPlayback()
+    {
+        string mode = FishingMode();
+        if (fishingSampling || mode == "off") return;
+        fishingSampling = true;
+        int revision = fishingVisibilityRevision;
+        SiteView view = browsingSite;
+        CoreWebView2Frame frame = view == null ? bilibiliFrame : null;
+        Uri page = view == null ? browser.Source : view.Browser.Source;
+        try
+        {
+            string playing = "false";
+            if (view != null && CanUseSiteTaskbar(view))
+                playing = await view.Browser.CoreWebView2.ExecuteScriptAsync(FishingPlaybackScript(view.VideoSelector));
+            else if (frame != null)
+                playing = await frame.ExecuteScriptAsync(FishingPlaybackScript(BilibiliVideoSelector));
+            else if (view == null && browser.CoreWebView2 != null && IsLocal(browser.CoreWebView2.Source))
+                playing = await browser.CoreWebView2.ExecuteScriptAsync(FishingPlaybackScript("document.querySelector('.theater-view video.video-element')"));
+            if (!IsDisposed && !fishingClosing && revision == fishingVisibilityRevision)
+            {
+                bool sameSource = browsingSite == view && (view == null
+                    ? frame == bilibiliFrame && page == browser.Source
+                    : page == view.Browser.Source);
+                SendFishing("FISHING_MODE=" + (sameSource && playing == "true" ? FishingMode() : "off"));
+            }
+        }
+        catch (InvalidOperationException) { if (!IsDisposed) StopFishingPlayback(); }
+        catch (COMException) { if (!IsDisposed) StopFishingPlayback(); }
+        finally { fishingSampling = false; }
+    }
+
+    private bool SendFishing(string command)
+    {
+        if (service == null) return false;
+        try
+        {
+            service.StandardInput.WriteLine(command);
+            return true;
+        }
+        catch (IOException) { return false; }
+        catch (InvalidOperationException) { return false; }
+    }
+
+    private void StopFishingPlayback()
+    {
+        fishingVisibilityRevision++;
+        SendFishing("FISHING_MODE=off");
+    }
+
+    private void DispatchFishing(Action action)
+    {
+        try { if (!IsDisposed && IsHandleCreated) BeginInvoke(action); }
+        catch (InvalidOperationException) { }
+    }
+
+    private void OnFishingSessionSwitch(object sender, SessionSwitchEventArgs args)
+    {
+        if (args.Reason != SessionSwitchReason.SessionLock && args.Reason != SessionSwitchReason.SessionUnlock) return;
+        DispatchFishing(delegate
+        {
+            screenLocked = args.Reason == SessionSwitchReason.SessionLock;
+            StopFishingPlayback();
+        });
+    }
+
+    private static string DecodeFishingMessage(string value)
+    {
+        try { return Encoding.UTF8.GetString(Convert.FromBase64String(value)); }
+        catch (FormatException) { return ""; }
+    }
+
+    private async void ShowFishingRecap(string message)
+    {
+        if (fishingClosing || screenLocked || String.IsNullOrEmpty(message)) return;
+        using (var notice = new NotifyIcon { Icon = Icon, Visible = true })
+        {
+            notice.ShowBalloonTip(5000, "鱼塘", message, ToolTipIcon.None);
+            await Task.Delay(7000);
+        }
+    }
+
     protected override void WndProc(ref Message message)
     {
         if (message.Msg == WmHotkey && message.WParam.ToInt32() == HotkeyId)
@@ -1049,8 +1165,28 @@ internal sealed class PlayerWindow : Form
         base.WndProc(ref message);
     }
 
+    protected override async void OnFormClosing(FormClosingEventArgs args)
+    {
+        base.OnFormClosing(args);
+        if (args.Cancel || fishingReadyToClose || args.CloseReason != CloseReason.UserClosing || service == null) return;
+        args.Cancel = true;
+        if (fishingClosing) return;
+        fishingClosing = true;
+        fishingTimer.Stop();
+        await Task.Yield();
+        if (SendFishing("FISHING_EXIT") && await Task.WhenAny(fishingExit.Task, Task.Delay(1500)) == fishingExit.Task)
+        {
+            string message = await fishingExit.Task;
+            if (!String.IsNullOrEmpty(message)) MessageBox.Show(this, message, "鱼塘结算");
+        }
+        fishingReadyToClose = true;
+        Close();
+    }
+
     protected override void OnFormClosed(FormClosedEventArgs args)
     {
+        SystemEvents.SessionSwitch -= OnFishingSessionSwitch;
+        fishingTimer.Dispose();
         taskbarTimer.Dispose();
         taskbarClickTimer.Dispose();
         if (hotkeyRegistered) UnregisterHotKey(Handle, HotkeyId);

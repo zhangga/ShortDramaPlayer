@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-const { app, BaseWindow, WebContentsView, globalShortcut, screen, dialog } = require('electron');
+const { app, BaseWindow, WebContentsView, globalShortcut, screen, dialog, Notification } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const { execFile } = require('node:child_process');
@@ -9,6 +9,8 @@ const {
   findDock, dockPreviewBounds, expandedPreviewBounds, clamp,
   MIN_DOCK_SCALE, MAX_DOCK_SCALE, DEFAULT_DOCK_SCALE, MIN_ZOOM, MAX_ZOOM, DEFAULT_ZOOM
 } = require('./dock-placement');
+const { getFishing } = require('../server/services/fishingService');
+const { isPlayerVideoPlaying } = require('./fishing-playback');
 
 const runFile = promisify(execFile);
 const HEADER_HEIGHT = 60;
@@ -332,7 +334,14 @@ function createMacDesktop(windowOptions, appUrl) {
     }
   }
 
+  function showFishingRecap() {
+    if (!Notification.isSupported()) return;
+    const body = getFishing().takeRecap();
+    if (body) new Notification({ title: '鱼塘', body }).show();
+  }
+
   function handleGesture(current, command, point) {
+    if (['click', 'play', 'back', 'toggle', 'exit'].includes(command)) showFishingRecap();
     switch (command) {
       case 'click':
         clearTimeout(pendingClick);
@@ -460,10 +469,24 @@ function createMacDesktop(windowOptions, appUrl) {
       'window:compact': () => setCompact(!compact),
       'window:dock': enterPreview
     };
-    if (!preview && Object.hasOwn(actions, message)) enqueue(actions[message]);
+    if (!preview && Object.hasOwn(actions, message)) {
+      if (browsingSite) showFishingRecap();
+      enqueue(actions[message]);
+    }
   });
 
-  return { window, contents, activate, toggleHidden: () => enqueue(toggleHidden) };
+  async function fishingMode() {
+    const current = preview;
+    const visible = current?.window ?? window;
+    if (hidden || visible.isDestroyed() || !visible.isVisible() || visible.isMinimized()) return null;
+    const source = browsingSite;
+    const playing = source ? await source.isPlaying() : await isPlayerVideoPlaying(contents);
+    if (!playing || hidden || source !== browsingSite || current !== preview ||
+        visible.isDestroyed() || !visible.isVisible() || visible.isMinimized()) return null;
+    return current ? (current.expanded ? 'compact' : 'taskbar') : (compact ? 'compact' : 'large');
+  }
+
+  return { window, contents, activate, fishingMode, toggleHidden: () => enqueue(toggleHidden) };
 }
 
 module.exports = { createMacDesktop };

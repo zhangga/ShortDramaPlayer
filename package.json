@@ -1,7 +1,7 @@
 {
   "name": "hongguo-open-player",
   "version": "1.2.0",
-  "description": "红果开源播放器原生桌面版 (支持 macOS / Windows 跨平台原生应用 / 实时流式解密 / 沉浸式竖屏观影)",
+  "description": "摸鱼侠，支持红果短剧、抖音和 B 站的开源桌面播放器。",
   "main": "src/electron/main.js",
   "scripts": {
     "start": "node src/server/index.js",
@@ -19,7 +19,7 @@
   },
   "build": {
     "appId": "com.zfdang.hongguo.openplayer",
-    "productName": "红果开源播放器",
+    "productName": "摸鱼侠",
     "copyright": "Copyright © 2026",
     "publish": null,
     "beforePack": "scripts/build-mac-dock-helper.js",
@@ -44,7 +44,7 @@
       "gatekeeperAssess": false
     },
     "dmg": {
-      "title": "安装 红果开源播放器",
+      "title": "安装摸鱼侠",
       "contents": [
         {
           "x": 130,
@@ -92,7 +92,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "红果开源播放器",
+      "shortcutName": "摸鱼侠",
       "artifactName": "${name}-${version}-win-${arch}-setup.${ext}"
     },
     "portable": {
@@ -107,7 +107,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/zfdang/hongguo-open-player.git"
+    "url": "git+https://github.com/zhangga/ShortDramaPlayer.git"
   },
   "keywords": [
     "hongguo",

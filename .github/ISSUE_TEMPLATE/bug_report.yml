@@ -1,5 +1,5 @@
 name: 问题反馈
-description: 反馈使用红果开源播放器时遇到的问题。
+description: 反馈使用摸鱼侠时遇到的问题。
 body:
   - type: textarea
     id: description
@@ -25,7 +25,7 @@ body:
     id: version
     attributes:
       label: 软件版本
-      description: 请填写当前使用的红果开源播放器版本。
+      description: 请填写当前使用的摸鱼侠版本。
       placeholder: 例如 1.0.21
     validations:
       required: true

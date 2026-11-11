@@ -1,5 +1,5 @@
 /* ============================================================
-   红果短剧桌面播放器 (Hongguo Open Player) 核心样式表
+   摸鱼侠核心样式表
    沉浸式暗黑影院视觉系统
    ============================================================ */
 
@@ -155,10 +155,6 @@ html.platform-mac .app-header {
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   margin-right: 1px;
-}
-
-.brand-suffix {
-  white-space: nowrap;
 }
 
 .nav-tabs {
@@ -3139,10 +3135,6 @@ html.platform-win .app-header { padding-right: 160px; }
   .playing-title { max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 }
 
-@media (max-width: 1080px) {
-  .brand-suffix { display: none; }
-}
-
 @media (max-width: 760px) {
   .brand-name { display: none; }
   .nav-tabs { gap: 2px; }
@@ -3181,6 +3173,108 @@ html.platform-win .app-header { padding-right: 160px; }
   outline-offset: -2px;
 }
 .taskbar-preview-button { display: none; }
+
+.fishing-dialog {
+  width: min(560px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  margin: auto;
+  padding: clamp(14px, 3vw, 24px);
+  overflow: auto;
+  color: var(--text-main);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  font-size: 14px;
+  line-height: 1.5;
+  user-select: text;
+}
+
+.fishing-dialog::backdrop { background: rgb(7 10 16 / 74%); }
+
+.fishing-header,
+.fishing-actions,
+.fishing-pages {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fishing-header { margin-bottom: 14px; }
+.fishing-header h2 { font-size: 20px; }
+
+.fishing-button,
+.fishing-dialog input[type="text"] {
+  min-height: 36px;
+  padding: 5px 10px;
+  color: var(--text-main);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font: inherit;
+}
+
+.fishing-button { white-space: nowrap; cursor: pointer; }
+.fishing-button:hover:not(:disabled) { background: var(--bg-hover); }
+.fishing-button:disabled { opacity: .55; cursor: default; }
+.fishing-primary,
+.fishing-button[aria-pressed="true"] {
+  border-color: #437990;
+  background: #234657;
+}
+
+.fishing-dialog :focus-visible {
+  outline: 2px solid #92cbe5;
+  outline-offset: 2px;
+}
+
+.fishing-catch {
+  padding: 12px;
+  background: #172b36;
+  border: 1px solid #304856;
+  border-radius: var(--radius-md);
+}
+
+.fishing-catch strong { color: #a8dff6; }
+.fishing-catch ul {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+  list-style: none;
+}
+
+.fishing-catch small { display: block; color: #b6c4cf; }
+.fishing-membership { margin-block: 16px; color: var(--text-sub); }
+.fishing-membership strong,
+.fishing-membership form label { color: var(--text-main); }
+.fishing-membership form .fishing-actions { margin-block: 6px; }
+.fishing-dialog input[type="text"] { flex: 1; min-width: 0; }
+.fishing-recaps { display: flex; align-items: center; gap: 7px; margin-top: 10px; }
+.fishing-recaps input { accent-color: #92cbe5; }
+.fishing-error { color: #ffadb7; margin-top: 10px; }
+.fishing-board { border-top: 1px solid var(--border-color); padding-top: 12px; }
+.fishing-periods { margin-bottom: 8px; }
+.fishing-periods [role="group"] { display: flex; gap: 6px; }
+.fishing-board table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+.fishing-board th,
+.fishing-board td { padding: 7px 5px; border-bottom: 1px solid var(--border-color); text-align: left; overflow-wrap: anywhere; }
+.fishing-board th { font-weight: 500; color: var(--text-sub); }
+.fishing-board th:first-child { width: 64px; }
+.fishing-board th:last-child { width: 72px; }
+.fishing-board :is(th, td):last-child { text-align: right; }
+.fishing-champion {
+  display: inline-block;
+  margin-inline-start: 6px;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: #432e14;
+  color: #ffda87;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.fishing-pages { justify-content: flex-end; margin-top: 8px; }
 
 html.taskbar-preview .app-header,
 html.taskbar-preview .player-header,

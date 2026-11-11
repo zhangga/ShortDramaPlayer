@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 const { app, BrowserWindow, Menu, shell, dialog } = require('electron');
 const path = require('path');
+const APP_NAME = '摸鱼侠';
+const GITHUB_REPO_URL = 'https://github.com/zhangga/ShortDramaPlayer';
 
 // 必须在 app.whenReady 之前注入 Chromium 硬件解码与 macOS VideoToolbox HEVC (H.265) 解码开关
 app.commandLine.appendSwitch('enable-features', 'PlatformHEVCDecoderSupport,PlatformHEVCEncoderSupport');
@@ -12,6 +14,7 @@ let serverInstance = null;
 let serverStart = null;
 let windowCreation = null;
 let macDesktop = null;
+let stopFishing;
 function createWindow() {
   if (mainWindow) {
     if (macDesktop) macDesktop.activate();
@@ -53,7 +56,7 @@ async function buildWindow() {
     height: 840,
     minWidth: 960,
     minHeight: 640,
-    title: isMac ? '短剧小窗' : '红果开源播放器',
+    title: APP_NAME,
     backgroundColor: '#0f1015',
     autoHideMenuBar: !isMac, // Windows 下默认隐藏传统菜单栏，保持纯粹现代深色观影质感 (按 Alt 唤出)
     webPreferences: {
@@ -112,7 +115,19 @@ async function buildWindow() {
   });
   contents.on('will-navigate', guardNavigation);
   contents.on('will-redirect', guardNavigation);
+  const { trackFishing, isPlayerVideoPlaying } = require('./fishing-playback');
+  const stopTracking = trackFishing(window, macDesktop?.fishingMode ?? (async () => {
+    if (window.isVisible() && !window.isMinimized() && await isPlayerVideoPlaying(contents)) {
+      if (!window.isDestroyed() && window.isVisible() && !window.isMinimized()) return 'large';
+    }
+    return null;
+  }));
+  stopFishing = stopTracking;
   window.on('closed', () => {
+    if (stopFishing === stopTracking) {
+      stopFishing();
+      stopFishing = null;
+    }
     if (mainWindow === window) {
       mainWindow = null;
       macDesktop = null;
@@ -135,12 +150,7 @@ async function buildWindow() {
   }
 }
 
-const GITHUB_REPO_URL = process.platform === 'darwin'
-  ? 'https://github.com/zhangga/ShortDramaPlayer'
-  : 'https://github.com/zfdang/hongguo-open-player';
-
 function showAboutDialog() {
-  const name = process.platform === 'darwin' ? '短剧小窗' : '红果开源播放器';
   const version = typeof app.getVersion === 'function' ? app.getVersion() : '1.0.0';
   const iconPath = process.platform === 'darwin'
     ? path.join(__dirname, '../../build/icon.png')
@@ -155,9 +165,9 @@ function showAboutDialog() {
 
   dialog.showMessageBox(mainWindow || undefined, {
     type: 'info',
-    title: `关于 ${name}`,
-    message: `${name} v${version}`,
-    detail: `${process.platform === 'darwin' ? '支持红果短剧、B 站视频和直播。' : '一款优雅、无广告的开源跨平台红果短剧播放器。'}\n\n项目开源主页: ${GITHUB_REPO_URL}\n开源许可: GPL-3.0`,
+    title: `关于${APP_NAME}`,
+    message: `${APP_NAME} v${version}`,
+    detail: `${process.platform === 'darwin' ? '支持红果短剧、抖音和 B 站，可贴 Dock 播放。' : '支持红果短剧和 B 站。'}\n\n项目开源主页: ${GITHUB_REPO_URL}\n开源许可: GPL-3.0`,
     buttons: ['访问 GitHub 主页', '确定'],
     defaultId: 0,
     cancelId: 1,
@@ -173,15 +183,14 @@ function showAboutDialog() {
 // 构建原生 macOS 菜单栏
 function setupMenu() {
   const isMac = process.platform === 'darwin';
-  const name = isMac ? '短剧小窗' : '红果开源播放器';
   const template = [
     ...(isMac
       ? [
           {
-            label: name,
+            label: APP_NAME,
             submenu: [
               {
-                label: `关于 ${name}`,
+                label: `关于${APP_NAME}`,
                 click: () => showAboutDialog()
               },
               { type: 'separator' },
@@ -191,7 +200,7 @@ function setupMenu() {
               { role: 'hideOthers', label: '隐藏其他' },
               { role: 'unhide', label: '全部显示' },
               { type: 'separator' },
-              { role: 'quit', label: `退出 ${name}` }
+              { role: 'quit', label: `退出${APP_NAME}` }
             ]
           }
         ]
@@ -242,7 +251,7 @@ function setupMenu() {
       label: '帮助',
       submenu: [
         {
-          label: `关于 ${name}`,
+          label: `关于${APP_NAME}`,
           click: () => showAboutDialog()
         },
         {
@@ -298,7 +307,7 @@ if (!gotTheLock) {
     }
     if (typeof app.setAboutPanelOptions === 'function') {
       app.setAboutPanelOptions({
-        applicationName: process.platform === 'darwin' ? '短剧小窗' : '红果开源播放器',
+        applicationName: APP_NAME,
         applicationVersion: typeof app.getVersion === 'function' ? app.getVersion() : '1.0.0',
         copyright: 'Copyright © 2026 zfdang. Licensed under GPL-3.0.',
         website: GITHUB_REPO_URL,
@@ -331,13 +340,19 @@ if (!gotTheLock) {
     quitting = true;
     event.preventDefault();
     try { require('../server/services/logger').info('Electron', '应用程序正在退出，保存状态并关闭服务...'); } catch (_) {}
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.destroy();
-      mainWindow = null;
-    }
-    require('../server/services/streamService').shutdown();
-    serverInstance.close();
-    serverInstance.closeAllConnections?.();
-    require('../server/services/storeService').pending.catch(console.error).finally(() => app.quit());
+    stopFishing?.();
+    stopFishing = null;
+    require('../server/services/fishingService').getFishing().finish().then(message => {
+      if (message) return dialog.showMessageBox({ title: '鱼塘结算', message, buttons: ['好'] });
+    }).catch(console.error).finally(() => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.destroy();
+        mainWindow = null;
+      }
+      require('../server/services/streamService').shutdown();
+      serverInstance.close();
+      serverInstance.closeAllConnections?.();
+      require('../server/services/storeService').pending.catch(console.error).finally(() => app.quit());
+    });
   });
 }

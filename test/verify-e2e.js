@@ -10,7 +10,7 @@ const { startServer } = require('../src/server/index.js');
 
 async function runTests() {
   console.log('\n======================================================');
-  console.log('🧪 开始红果开源播放器全链路自动化端到端测试 (E2E Verification)');
+  console.log('🧪 开始摸鱼侠全链路自动化端到端测试 (E2E Verification)');
   console.log('======================================================\n');
 
   let serverInstance = null;
@@ -24,7 +24,7 @@ async function runTests() {
     const htmlRes = await client.get(`${BASE_URL}/`);
     assert.strictEqual(htmlRes.status, 200);
     client.defaults.headers.common.Cookie = htmlRes.headers['set-cookie'][0].split(';')[0];
-    assert(htmlRes.data.includes('红果开源播放器'), 'index.html 标题应正确');
+    assert(htmlRes.data.includes('<title>摸鱼侠</title>'), 'index.html 标题应正确');
     assert(htmlRes.data.includes('vue.global.prod.js'), '应包含本地 Vue 3 引用');
 
     const jsRes = await client.get(`${BASE_URL}/js/app.js`);

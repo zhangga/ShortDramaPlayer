@@ -225,12 +225,12 @@ jobs:
         with:
           tag_name: ${{ needs.prep.outputs.tag }}
           target_commitish: ${{ github.sha }}
-          name: "红果开源播放器 多平台原生桌面版 ${{ needs.prep.outputs.tag }}"
+          name: "摸鱼侠 多平台原生桌面版 ${{ needs.prep.outputs.tag }}"
           draft: false
           prerelease: false
           generate_release_notes: true
           body: |
-            ### 🎬 红果开源播放器 多平台原生桌面版 ${{ needs.prep.outputs.tag }}
+            ### 🎬 摸鱼侠 多平台原生桌面版 ${{ needs.prep.outputs.tag }}
 
             专为 macOS 与 Windows 平台打造的原生多端桌面应用，开箱即用，无需打开任何网页浏览器。
 
@@ -245,7 +245,7 @@ jobs:
             - **Windows (x64)**：
               - 安装向导版：下载 `hongguo-open-player-*-win-x64-setup.exe`，双击根据向导安装，自动创建桌面与开始菜单快捷方式。
               - 单文件便携版：下载 `hongguo-open-player-*-win-x64-portable.exe`，双击直接运行。
-              - 绿色免安装 ZIP：下载 `hongguo-open-player-*-win-x64.zip`，解压后双击 `红果开源播放器.exe` 直接运行。
+              - 绿色免安装 ZIP：下载 `hongguo-open-player-*-win-x64.zip`，解压后双击 `摸鱼侠.exe` 直接运行。
             - **macOS (Apple Silicon M1/M2/M3/M4)**：
               - 安装镜像：下载 `hongguo-open-player-*-mac-arm64.dmg`，双击拖入 `Applications` 即可。
               - 免安装 ZIP：下载 `hongguo-open-player-*-mac-arm64.zip`，解压后直接运行。

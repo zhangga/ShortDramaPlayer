@@ -1,6 +1,6 @@
 # Windows 便携版维护
 
-短剧小窗在 Windows x64 上使用 WinForms 和系统 WebView2，Node.js 播放服务只监听本机。Windows 外壳测量主任务栏空位，并根据屏幕的可用工作区和视频比例定位展开的小窗。页面负责渲染视频和响应鼠标操作。
+摸鱼侠在 Windows x64 上使用 WinForms 和系统 WebView2，Node.js 播放服务只监听本机。Windows 外壳测量主任务栏空位，并根据屏幕的可用工作区和视频比例定位展开的小窗。页面负责渲染视频和响应鼠标操作。
 
 | 目录 | 内容 |
 | --- | --- |
@@ -20,7 +20,7 @@ pwsh -File .\scripts\package-windows.ps1
 
 脚本校验并缓存指定版本的 Node.js、WebView2 SDK 和编解码器源码，按 `package-lock.json` 安装生产依赖，生成 `dist/ShortDramaPlayer-win-x64.zip`。构建缓存位于 `.build/windows/`。FFmpeg、x264、ByteVC2 补丁或构建脚本发生变化时，打包会重新编译解码器。
 
-完整解压后运行 `ShortDramaPlayer.exe`。运行需要 Microsoft Edge WebView2 Runtime，HEVC 片源依赖系统的 HEVC 解码支持。使用记录保存在解压目录的 `data/` 中。
+完整解压后运行 `摸鱼侠.exe`。运行需要 Microsoft Edge WebView2 Runtime，HEVC 片源依赖系统的 HEVC 解码支持。使用记录保存在解压目录的 `data/` 中。
 
 ## 验证
 

@@ -5,7 +5,7 @@ const vm = require('node:vm');
 function client(fetch, overrides = {}) {
   let state;
   const mounted = [];
-  const scripts = ['taskbar-controls.js', 'app.js'].map(name => fs.readFileSync(require.resolve(`../../src/client/js/${name}`), 'utf8'));
+  const scripts = ['taskbar-controls.js', 'fishing.js', 'app.js'].map(name => fs.readFileSync(require.resolve(`../../src/client/js/${name}`), 'utf8'));
   vm.runInNewContext(scripts.join('\n'), {
     Vue: { ref: value => ({ value }), computed: fn => ({ get value() { return fn(); } }),
       nextTick: async fn => { if (fn) fn(); }, watch() {}, onMounted(fn) { mounted.push(fn); }, onUnmounted() {},

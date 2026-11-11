@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="referrer" content="no-referrer">
-  <title>红果开源播放器 - Hongguo Open Player</title>
+  <title>摸鱼侠</title>
   <link rel="stylesheet" href="/css/app.css">
   <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png">
 </head>
@@ -15,7 +15,7 @@
       <div class="header-left">
         <div class="brand" @click="goHome" title="返回首页">
           <img class="brand-icon" src="/assets/app-icon.png" alt="" width="28" height="28" aria-hidden="true">
-          <span class="brand-name"><span class="brand-accent">红果</span><span class="brand-suffix">开源播放器</span></span>
+          <span class="brand-name"><span class="brand-accent">摸鱼侠</span></span>
         </div>
         <nav class="nav-tabs">
           <button class="nav-item" :class="{ active: currentTab === 'hot-drama' && viewMode === 'catalog' }" @click="switchTab('hot-drama')">🔥 热门榜单</button>
@@ -88,6 +88,10 @@
 
           <!-- 下拉菜单 -->
           <div v-if="showAppMenu" class="header-dropdown-menu" @click.stop>
+            <button type="button" class="dropdown-item" @click="openFishing">
+              <span class="dropdown-icon" aria-hidden="true">🐟</span>
+              <span class="dropdown-label">鱼塘</span>
+            </button>
             <button class="dropdown-item" @click="openShortcutsModal">
               <span class="dropdown-icon">⌨️</span>
               <span class="dropdown-label">快捷键指南</span>
@@ -107,7 +111,7 @@
             </button>
             <button class="dropdown-item" @click="openAboutModal">
               <span class="dropdown-icon">ℹ️</span>
-              <span class="dropdown-label">关于 红果开源播放器</span>
+              <span class="dropdown-label">关于摸鱼侠</span>
             </button>
           </div>
         </div>
@@ -972,14 +976,14 @@
       </div>
     </div>
 
-    <!-- 关于 红果开源播放器 弹窗 -->
+    <!-- 关于弹窗 -->
     <div v-if="showAboutModal" class="about-modal-overlay" @click.self="closeAboutModal">
-      <div class="about-modal" role="dialog" aria-modal="true" tabindex="-1" aria-label="关于 红果开源播放器">
+      <div class="about-modal" role="dialog" aria-modal="true" tabindex="-1" aria-label="关于摸鱼侠">
         <div class="about-modal-header">
           <div class="about-brand-row">
             <img class="about-brand-icon" src="/assets/app-icon.png" alt="" width="44" height="44" />
             <div class="about-brand-titles">
-              <h3 class="about-title">红果开源播放器</h3>
+              <h3 class="about-title">摸鱼侠</h3>
               <span class="about-version">{{ appVersion ? 'v' + appVersion + ' · ' : '' }}原生桌面客户端</span>
             </div>
           </div>
@@ -987,8 +991,7 @@
         </div>
         <div class="about-modal-body">
           <p class="about-desc">
-            一款基于 Electron、Node.js 与 Vue 打造的开源跨平台红果短剧原生桌面播放客户端。
-            无需安装安卓模拟器，内置流媒体解密与本地代理，提供剧目检索、演员榜单、沉浸式影院观影与本地进度记忆。
+            一款支持红果短剧、抖音和 B 站的开源桌面播放器。Windows 可以把画面放进任务栏，macOS 可以贴 Dock 播放。
           </p>
           <div class="about-feature-tags">
             <span class="about-tag">🎬 实时流式解密</span>
@@ -1004,7 +1007,7 @@
             </div>
             <div class="about-meta-item">
               <span class="meta-label">项目主页：</span>
-              <a class="meta-link" href="https://github.com/zfdang/hongguo-open-player" target="_blank" rel="noopener">github.com/zfdang/hongguo-open-player</a>
+              <a class="meta-link" href="https://github.com/zhangga/ShortDramaPlayer" target="_blank" rel="noopener">github.com/zhangga/ShortDramaPlayer</a>
             </div>
           </div>
           <div class="about-disclaimer">
@@ -1019,6 +1022,77 @@
       </div>
     </div>
 
+    <dialog ref="fishingDialog" class="fishing-dialog" aria-labelledby="fishing-title" @close="fishing.closed" @keydown.stop>
+      <header class="fishing-header">
+        <h2 id="fishing-title">鱼塘</h2>
+        <button type="button" class="fishing-button" autofocus @click="fishingDialog.close()">关闭</button>
+      </header>
+      <template v-if="fishing.status.value">
+        <section class="fishing-catch" aria-label="我的今日收获">
+          <p>今天摸鱼 {{ Math.floor(fishing.status.value.today.seconds / 60) }} 分钟，捞了 <strong>{{ fishing.status.value.today.total }} 条鱼</strong></p>
+          <ul>
+            <li><span>🐟 小鱼 × {{ fishing.status.value.today.fish[0] }}</span><small>任务栏 / Dock 每 10 分钟</small></li>
+            <li><span>🐠 锦鲤 × {{ fishing.status.value.today.fish[1] }}</span><small>小窗每 5 分钟</small></li>
+            <li><span>🐡 河豚 × {{ fishing.status.value.today.fish[2] }}</span><small>大窗每 3 分钟</small></li>
+          </ul>
+        </section>
+        <section class="fishing-membership" aria-label="上榜设置">
+          <p v-if="!fishing.status.value.configured">总榜暂未配置。你的收获已记在本机。</p>
+          <p v-else-if="fishing.status.value.withdrawing" role="status">已停止上报，联网后会撤下榜上的成绩。</p>
+          <template v-else-if="fishing.status.value.nickname">
+            <div class="fishing-actions">
+              <p>上榜昵称 <strong>{{ fishing.status.value.nickname }}</strong></p>
+              <button type="button" class="fishing-button" :disabled="fishing.saving.value" @click="fishing.change('/leave')">退出榜单</button>
+            </div>
+            <p v-if="fishing.status.value.pending" role="status">成绩待同步，联网后会自动重试。</p>
+          </template>
+          <form v-else @submit.prevent="fishing.change('/join', { nickname: fishing.nickname.value })">
+            <label for="fishing-nickname">上榜昵称</label>
+            <div class="fishing-actions">
+              <input id="fishing-nickname" v-model="fishing.nickname.value" type="text" maxlength="40" required autocomplete="off" aria-describedby="fishing-privacy">
+              <button type="submit" class="fishing-button fishing-primary" :disabled="fishing.saving.value">加入总榜</button>
+            </div>
+            <p id="fishing-privacy">加入后会公开昵称和从今天起捞到的鱼数。观看时长和内容留在本机。</p>
+          </form>
+          <label class="fishing-recaps">
+            <input type="checkbox" :checked="fishing.status.value.recaps" :disabled="fishing.saving.value"
+              @change="fishing.change('/recaps', { enabled: $event.target.checked })">
+            退出和跨天时显示结算
+          </label>
+        </section>
+        <section v-if="fishing.status.value.configured" class="fishing-board" aria-label="全体用户总榜" :aria-busy="fishing.loading.value">
+          <div class="fishing-actions fishing-periods">
+            <div aria-label="榜单周期" role="group">
+              <button type="button" class="fishing-button" :aria-pressed="fishing.period.value === 'today'" @click="fishing.loadBoard('today', 1)">今日榜</button>
+              <button type="button" class="fishing-button" :aria-pressed="fishing.period.value === 'week'" @click="fishing.loadBoard('week', 1)">本周榜</button>
+            </div>
+            <button type="button" class="fishing-button" :disabled="fishing.loading.value" @click="fishing.loadBoard()">刷新</button>
+          </div>
+          <p v-if="fishing.loading.value" role="status">正在读取总榜…</p>
+          <p v-else-if="fishing.boardError.value" role="alert">{{ fishing.boardError.value }}</p>
+          <table v-else-if="fishing.rows.value.length">
+            <thead><tr><th scope="col">名次</th><th scope="col">昵称</th><th scope="col">鱼数</th></tr></thead>
+            <tbody>
+              <tr v-for="(entry, index) in fishing.rows.value" :key="index">
+                <td>{{ entry.rank }}</td>
+                <td>
+                  {{ entry.nickname }}
+                  <span v-if="fishing.period.value === 'today' && entry.rank === 1" class="fishing-champion">今日摸鱼王</span>
+                </td>
+                <td>{{ entry.fish }} 条</td>
+              </tr>
+            </tbody>
+          </table>
+          <p v-else>{{ fishing.page.value === 1 ? '鱼塘暂时还没人上榜。' : '这一页暂时没有成绩。' }}</p>
+          <div v-if="fishing.page.value > 1 || fishing.more.value" class="fishing-pages">
+            <button type="button" class="fishing-button" :disabled="fishing.loading.value || fishing.page.value === 1" @click="fishing.loadBoard(fishing.period.value, fishing.page.value - 1)">上一页</button>
+            <button type="button" class="fishing-button" :disabled="fishing.loading.value || !fishing.more.value" @click="fishing.loadBoard(fishing.period.value, fishing.page.value + 1)">下一页</button>
+          </div>
+        </section>
+      </template>
+      <p v-else-if="!fishing.settingsError.value" role="status">正在读取今日收获…</p>
+      <p v-if="fishing.settingsError.value" class="fishing-error" role="alert">{{ fishing.settingsError.value }}</p>
+    </dialog>
     <div v-if="toastText" class="app-toast" role="status" aria-live="polite">{{ toastText }}</div>
   </div>
 
@@ -1027,6 +1101,7 @@
   <script src="/js/danmaku.dom.js"></script>
   <script src="/js/bytevc2-stream.js"></script>
   <script src="/js/taskbar-controls.js"></script>
+  <script src="/js/fishing.js"></script>
   <script src="/js/app.js"></script>
 </body>
 </html>

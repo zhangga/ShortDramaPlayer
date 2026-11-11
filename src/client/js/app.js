@@ -96,6 +96,8 @@ createApp({
     let catalogScrollTop = 0;
     let fullscreenExitAt = 0;
     const toastText = ref('');
+    const fishing = setupFishing(notify);
+    const fishingDialog = fishing.dialog;
     const osdMessage = ref('');
     let toastTimer, osdTimer;
     const compactViewport = window.matchMedia?.('(max-width: 460px)');
@@ -465,7 +467,7 @@ createApp({
 
     function openGithubRepo() {
       showAppMenu.value = false;
-      window.open('https://github.com/zfdang/hongguo-open-player', '_blank');
+      window.open('https://github.com/zhangga/ShortDramaPlayer', '_blank');
     }
 
     function setControlsHidden(hidden) {
@@ -1765,7 +1767,7 @@ createApp({
         videoEl.value.volume = Number(volume.value);
         videoEl.value.muted = isMuted.value;
         if (navigator.mediaSession && typeof MediaMetadata !== 'undefined') {
-          navigator.mediaSession.metadata = new MediaMetadata({ title: `${activeSeries.value?.series_title || ''} · 第 ${activeEpisodeIndex.value} 集`, artist: '红果开源播放器' });
+          navigator.mediaSession.metadata = new MediaMetadata({ title: `${activeSeries.value?.series_title || ''} · 第 ${activeEpisodeIndex.value} 集`, artist: '摸鱼侠' });
         }
         reportClientLog('INFO', `视频元数据解析就绪: 《${activeSeries.value?.series_title || ''}》 第 ${activeEpisodeIndex.value} 集, 时长=${formatTime(duration.value)}, 画面=${videoEl.value.videoWidth || 0}x${videoEl.value.videoHeight || 0}`);
         videoEl.value.playbackRate = parseFloat(playbackRate.value);
@@ -1973,6 +1975,8 @@ createApp({
     }
 
     function handleKeyDown(e) {
+      fishing.checkRecap();
+      if (fishingDialog.value?.open) return;
       if (isTextEditingTarget(e.target)) return;
       if (e.target?.tagName === 'SELECT') return;
       const isSpace = e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar' || e.key?.toLowerCase() === 'k';
@@ -2069,6 +2073,8 @@ createApp({
     }
 
     function handleGlobalPointerDown(e) {
+      fishing.checkRecap();
+      if (fishingDialog.value?.open) return;
       if (showDanmakuSettings.value && !e.target?.closest?.('.danmaku-control')) showDanmakuSettings.value = false;
       if (viewMode.value !== 'theater') return;
       if (isTextEditingTarget(e.target) || e.target?.closest?.('.search-box')) return;
@@ -2079,6 +2085,7 @@ createApp({
     }
 
     function handleGlobalFocusIn(e) {
+      if (fishingDialog.value?.open) return;
       if (viewMode.value !== 'theater') return;
       if (isTextEditingTarget(e.target) || e.target?.closest?.('.search-box')) return;
       // 避免控制按钮、全屏按钮、选集方块或滑块截留焦点，保持焦点常驻在播放器主体上
@@ -2089,6 +2096,7 @@ createApp({
     }
 
     function handleGlobalClick(e) {
+      if (fishingDialog.value?.open) return;
       if (showSpeedMenu.value && !e.target?.closest?.('.speed-selector')) showSpeedMenu.value = false;
       if (showAppMenu.value && !e.target?.closest?.('.header-menu-container')) {
         showAppMenu.value = false;
@@ -2277,6 +2285,12 @@ createApp({
       showShortcutsModal,
       toggleAppMenu,
       closeAppMenu,
+      fishing,
+      fishingDialog,
+      openFishing() {
+        closeAppMenu();
+        void fishing.open();
+      },
       openAboutModal,
       closeAboutModal,
       openShortcutsModal,

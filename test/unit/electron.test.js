@@ -28,6 +28,7 @@ for (const platform of ['darwin', 'win32', 'linux']) test(`desktop lifecycle and
         dialog: { showErrorBox() {}, showMessageBox: async () => ({ response: 0 }) } };
       if (name === '../server/index.js') return { startServer: async () => { starts++; return { server: { close() {} }, port: 8899 }; } };
       if (name === '../server/services/logger') return require('../../src/server/services/logger');
+      if (name === './fishing-playback') return { trackFishing: () => () => {} };
       if (name === './mac-desktop') return { createMacDesktop(options) {
         const window = new Window(options);
         window.webContents.loadURL = () => window.loadURL();
@@ -38,6 +39,7 @@ for (const platform of ['darwin', 'win32', 'linux']) test(`desktop lifecycle and
   vm.runInNewContext(fs.readFileSync(require.resolve('../../src/electron/main.js'), 'utf8'), context);
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(windows[0].shown, true);
+  assert.equal(windows[0].options.title, '摸鱼侠');
   windows[0].webContents.emit('render-process-gone', {}, { reason: 'crashed' });
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(windows[0].reloads, 1);
@@ -63,16 +65,18 @@ for (const platform of ['darwin', 'win32', 'linux']) test(`desktop lifecycle and
   assert.equal(windows[1].open({ url: 'file:///etc/passwd' }).action, 'deny');
   const helpMenu = lastMenuTemplate.find(m => m.label === '帮助');
   assert.ok(helpMenu);
-  const aboutHelp = helpMenu.submenu.find(i => i.label === (platform === 'darwin' ? '关于 短剧小窗' : '关于 红果开源播放器'));
+  const aboutHelp = helpMenu.submenu.find(i => i.label === '关于摸鱼侠');
   assert.ok(aboutHelp);
   aboutHelp.click();
   await new Promise(resolve => setImmediate(resolve));
-  assert.equal(openedUrl, platform === 'darwin' ? 'https://github.com/zhangga/ShortDramaPlayer' : 'https://github.com/zfdang/hongguo-open-player');
+  assert.equal(openedUrl, 'https://github.com/zhangga/ShortDramaPlayer');
 });
 
 test('packaging artifact names use english hongguo-open-player without breaking chinese productName', () => {
   const pkg = require('../../package.json');
-  assert.equal(pkg.build.productName, '红果开源播放器');
+  assert.equal(pkg.build.productName, '摸鱼侠');
+  assert.equal(pkg.build.nsis.shortcutName, '摸鱼侠');
+  assert.equal(pkg.build.dmg.title, '安装摸鱼侠');
   assert.ok(pkg.build.artifactName.startsWith('${name}-'));
   assert.equal(pkg.build.mac.artifactName, '${name}-${version}-mac-${arch}.${ext}');
   assert.equal(pkg.build.win.artifactName, '${name}-${version}-win-${arch}.${ext}');

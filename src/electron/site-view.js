@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
+const { isVideoPlaying } = require('./fishing-playback');
+
 const WORLD_ID = 1001;
 const VIDEO_CLASS = 'shortdrama-dock-video';
 const PREVIEW_CLASS = 'shortdrama-dock-preview';
@@ -143,6 +145,7 @@ function createSiteView(site, isActive, isPreview) {
         document.querySelectorAll('.${VIDEO_CLASS}').forEach(video => video.classList.remove('${VIDEO_CLASS}'));
       `);
     },
+    isPlaying: () => canPreview(contents.getURL()) && isVideoPlaying(contents, site.video),
     toggle: () => run(`(() => {
       const video = ${site.video};
       if (video?.paused) video.play().catch(() => {});

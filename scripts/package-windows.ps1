@@ -87,7 +87,7 @@ $player = Join-Path $stage 'player'
 $source = Join-Path $player 'codec-source'
 $null = New-Item -ItemType Directory -Path $stage, $runtime, $player, (Join-Path $source 'scripts')
 try {
-    & (Join-Path $desktop 'build-host.ps1') -WebView2Sdk $sdk -Output (Join-Path $stage 'ShortDramaPlayer.exe')
+    & (Join-Path $desktop 'build-host.ps1') -WebView2Sdk $sdk -Output (Join-Path $stage '摸鱼侠.exe')
     foreach ($library in 'lib/net462/Microsoft.Web.WebView2.Core.dll', 'lib/net462/Microsoft.Web.WebView2.WinForms.dll', 'runtimes/win-x64/native/WebView2Loader.dll') {
         Copy-Item -LiteralPath (Join-Path $sdk $library) -Destination $stage
     }

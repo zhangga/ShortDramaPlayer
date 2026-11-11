@@ -20,7 +20,7 @@ app.whenReady().then(async () => {
     const win = new BrowserWindow({
       width: 1280,
       height: 840,
-      title: '红果开源播放器',
+      title: '摸鱼侠',
       backgroundColor: '#0f1015',
       titleBarStyle: 'hiddenInset',
       trafficLightPosition: { x: 16, y: 16 },

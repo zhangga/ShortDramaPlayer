@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory)] [string] $WebView2Sdk,
-    [string] $Output = (Join-Path $PSScriptRoot 'ShortDramaPlayer.exe')
+    [string] $Output = (Join-Path $PSScriptRoot '摸鱼侠.exe')
 )
 
 $ErrorActionPreference = 'Stop'

@@ -11,6 +11,7 @@ class StoreService {
       history: Object.create(null), // series_id -> { series_id, series_title, cover, episode_index, vid, position_sec, duration_sec, updated_at }
       searchHistory: [],
       preferences: {},
+      fishing: {},
       favorites: Object.create(null) // series_id -> { series_id, series_title, cover, updated_at }
     };
     this.pending = Promise.resolve();
@@ -30,6 +31,7 @@ class StoreService {
             favorites: Object.assign(Object.create(null), parsed.favorites),
             searchHistory: Array.isArray(parsed.searchHistory) ? parsed.searchHistory.filter(x => typeof x === 'string').slice(0, 10) : [],
             preferences: this.validPreferences(parsed.preferences),
+            fishing: this.readFishing(parsed.fishing),
             mtimeMs: stats.mtimeMs
           };
         }
@@ -45,7 +47,7 @@ class StoreService {
       if (stat.mtimeMs !== this.lastLoadedMtime) {
         const disk = this.readDiskState();
         if (disk) {
-          this.state = { history: disk.history, favorites: disk.favorites, searchHistory: disk.searchHistory, preferences: disk.preferences };
+          this.state = { history: disk.history, favorites: disk.favorites, searchHistory: disk.searchHistory, preferences: disk.preferences, fishing: disk.fishing };
           this.lastLoadedMtime = disk.mtimeMs;
           this.loadError = null;
         }
@@ -64,6 +66,7 @@ class StoreService {
         for (const field of ['history', 'favorites']) this.state[field] = Object.assign(Object.create(null), parsed[field]);
         this.state.searchHistory = Array.isArray(parsed.searchHistory) ? parsed.searchHistory.filter(x => typeof x === 'string').slice(0, 10) : [];
         this.state.preferences = this.validPreferences(parsed.preferences);
+        this.state.fishing = this.readFishing(parsed.fishing);
         this.lastLoadedMtime = stats.mtimeMs;
         this.loadError = null;
         return;
@@ -138,6 +141,15 @@ class StoreService {
   getPreferences() {
     this.reloadDiskStateIfNeeded();
     return { ...this.state.preferences };
+  }
+
+  readFishing(value) {
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  }
+
+  getFishing() {
+    this.reloadDiskStateIfNeeded();
+    return this.state.fishing;
   }
 
   updatePreferences(value) {

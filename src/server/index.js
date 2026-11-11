@@ -7,6 +7,7 @@ const sessionToken = randomBytes(32).toString('hex');
 const dramaService = require('./services/dramaService');
 const streamService = require('./services/streamService');
 const storeService = require('./services/storeService');
+const { getFishing } = require('./services/fishingService');
 const logger = require('./services/logger');
 
 const app = express();
@@ -266,6 +267,20 @@ app.post('/api/preferences', async (req, res) => {
   catch (err) { sendApiError(res, err); }
 });
 
+app.get('/api/fishing', (_req, res) => res.json(getFishing().status()));
+app.post('/api/fishing/join', async (req, res) => res.json(await getFishing().join(req.body?.nickname)));
+app.post('/api/fishing/leave', async (_req, res) => res.json(await getFishing().leave()));
+app.post('/api/fishing/recaps', async (req, res) => res.json(await getFishing().setRecaps(req.body?.enabled)));
+app.post('/api/fishing/recap', (_req, res) => res.json({ message: getFishing().takeRecap() }));
+app.get('/api/fishing/leaderboard', async (req, res) => {
+  try {
+    res.json(await getFishing().leaderboard(req.query.period, Number(req.query.page ?? 1)));
+  } catch (error) {
+    if (error.status === 400) throw error;
+    res.status(502).json({ error: '暂时连不上总榜，请稍后重试' });
+  }
+});
+
 app.get('/api/search-history', (_req, res) => res.json(storeService.getSearchHistory()));
 app.post('/api/search-history', async (req, res) => {
   try {
@@ -490,7 +505,7 @@ async function startServer(preferredPort = PORT) {
     server = await listen(0);
   }
   const actualPort = server.address().port;
-  logger.info('Server', `🚀 红果开源播放器服务已启动: http://127.0.0.1:${actualPort}`);
+  logger.info('Server', `🚀 摸鱼侠服务已启动: http://127.0.0.1:${actualPort}`);
   logger.info('Server', `📄 运行日志文件: ${logger.getLogFilePath()}`);
   return { app, server, port: actualPort };
 }

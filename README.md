@@ -1,6 +1,6 @@
-# 短剧小窗 ShortDramaPlayer
+# 摸鱼侠
 
-短剧小窗是一款 Windows x64 便携播放器，支持红果短剧、抖音视频和短剧、B 站视频和直播。解压即可运行，可在常规窗口、置顶小窗和任务栏预览之间切换。
+摸鱼侠（原短剧小窗）是一款桌面播放器，支持红果短剧、抖音视频和短剧、B 站视频和直播。Windows x64 便携版可在常规窗口、置顶小窗和任务栏预览之间切换，macOS Apple Silicon 预览版支持贴 Dock 播放。
 
 [下载 Windows x64 便携版](https://github.com/zhangga/ShortDramaPlayer/releases/latest) · [使用说明](desktop/windows/使用说明.txt) · [构建与维护](docs/windows-maintenance.md)
 
@@ -25,7 +25,7 @@
 ## 快速开始
 
 1. 从发布页下载 `ShortDramaPlayer-win-x64.zip`，完整解压到可写目录。
-2. 双击 `ShortDramaPlayer.exe`。搜索剧名或从榜单浏览红果短剧，也可以点击顶栏的「哔哩哔哩」在窗口内浏览 B 站。
+2. 双击 `摸鱼侠.exe`（旧版为 `ShortDramaPlayer.exe`）。搜索剧名或从榜单浏览红果短剧，也可以点击顶栏的「哔哩哔哩」在窗口内浏览 B 站。
 3. 播放时点窗口上方的「小窗」或「任务栏」，切换观看方式。
 
 支持 Windows 10/11 x64。运行需要网络连接、.NET Framework 4.8 和 Microsoft Edge WebView2 Runtime。[下载 WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)
@@ -41,6 +41,10 @@
 点顶栏的「抖音」直接打开短剧频道。抖音的登录和选集在网页内完成。点「返回播放器」，可粘贴视频或短剧单集的分享链接后播放。
 
 播放后，Windows 点窗口上方的「任务栏」，macOS 点「贴 Dock」。右键可回到同一抖音网页，继续当前播放进度。
+
+## 鱼塘
+
+在「菜单与帮助 → 鱼塘」查看今日收获，填昵称即可加入今日榜和本周榜。今日榜第一名会显示「今日摸鱼王」。任务栏每 10 分钟、小窗每 5 分钟、大窗每 3 分钟各得一条鱼。总榜接入见 [Supabase 配置](docs/鱼塘配置.md)。
 
 ## 小窗与任务栏观看
 
@@ -80,4 +84,4 @@ npm run build:mac:arm64
 
 ## 开源来源
 
-短剧小窗基于 `zfdang/hongguo-open-player` 的播放服务和 Vue 界面，加入 WinForms 与 WebView2 窗口、任务栏预览和全局快捷键。[上游源码版本](https://github.com/zfdang/hongguo-open-player/tree/3f687c5b07e04eb194141f8eeb78ded86d646024) · [仓库许可证](LICENSE) · [ByteVC2 解码器来源](vendor/bytevc2/README.md)
+摸鱼侠基于 `zfdang/hongguo-open-player` 的播放服务和 Vue 界面，加入 WinForms 与 WebView2 窗口、任务栏预览和全局快捷键。[上游源码版本](https://github.com/zfdang/hongguo-open-player/tree/3f687c5b07e04eb194141f8eeb78ded86d646024) · [仓库许可证](LICENSE) · [ByteVC2 解码器来源](vendor/bytevc2/README.md)
