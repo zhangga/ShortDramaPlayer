@@ -712,12 +712,24 @@ createApp({
     }
 
     function showBilibili() {
+      showBilibiliPlayer();
+      window.chrome?.webview?.postMessage('bilibili:browse:');
+    }
+
+    function showBilibiliPlayer() {
       if (viewMode.value !== 'bilibili') {
         leaveTheater();
         closeActorDetail();
         viewMode.value = 'bilibili';
       }
       nextTick(() => bilibiliInputEl.value?.focus());
+    }
+
+    function openBilibiliSiteLink(event) {
+      const webview = window.chrome?.webview;
+      if (!webview) return;
+      event.preventDefault();
+      webview.postMessage('bilibili:browse:' + event.currentTarget.href);
     }
 
     async function openBilibiliVideo() {
@@ -1515,9 +1527,13 @@ createApp({
       taskbarCommand('drag-end');
     }
 
-    function handleTaskbarMessage(event) {
+    function handleDesktopMessage(event) {
       if (event.data === 'taskbar:play' && document.documentElement.classList.contains('taskbar-preview')) {
         togglePlay();
+      } else if (typeof event.data === 'string' && event.data.startsWith('bilibili:play:')) {
+        showBilibiliPlayer();
+        bilibiliInput.value = event.data.slice('bilibili:play:'.length);
+        openBilibiliVideo();
       }
     }
 
@@ -2055,7 +2071,7 @@ createApp({
       loadPreferences();
       loadSearchHistory();
       loadCatalog();
-      window.chrome?.webview?.addEventListener('message', handleTaskbarMessage);
+      window.chrome?.webview?.addEventListener('message', handleDesktopMessage);
       window.addEventListener('keydown', handleKeyDown);
       window.addEventListener('click', handleGlobalClick);
       window.addEventListener('mousemove', handleWindowMouseMove);
@@ -2081,7 +2097,7 @@ createApp({
       compactViewport?.removeEventListener?.('change', collapseCompactSidebar);
       bytevc2Session?.stop();
       stopDanmakuAnimation();
-      window.chrome?.webview?.removeEventListener('message', handleTaskbarMessage);
+      window.chrome?.webview?.removeEventListener('message', handleDesktopMessage);
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('click', handleGlobalClick);
       window.removeEventListener('mousemove', handleWindowMouseMove);
@@ -2136,7 +2152,7 @@ createApp({
       switchTab,
       changePage,
       goHome,
-      showBilibili, openBilibiliVideo, bilibiliInput, bilibiliInputEl, bilibiliVideo, bilibiliError, bilibiliLoading,
+      showBilibili, openBilibiliSiteLink, openBilibiliVideo, bilibiliInput, bilibiliInputEl, bilibiliVideo, bilibiliError, bilibiliLoading,
       openTheater,
       closeTheater,
       switchEpisode,

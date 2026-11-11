@@ -156,6 +156,35 @@ test('Bilibili resolves pasted share text and ignores a short link after switchi
   assert.equal(state.bilibiliLoading.value, false);
 });
 
+test('Windows opens Bilibili in the desktop view and can send a video back to the player', () => {
+  const messages = [];
+  let receiveMessage;
+  const state = client(async () => response([]), {
+    URL,
+    window: {
+      chrome: { webview: {
+        postMessage: message => messages.push(message),
+        addEventListener: (name, listener) => { if (name === 'message') receiveMessage = listener; }
+      } },
+      addEventListener() {}, removeEventListener() {}
+    }
+  });
+  state.mountForTest();
+  state.showBilibili();
+  assert.deepEqual(messages, ['bilibili:browse:']);
+
+  const url = 'https://www.bilibili.com/video/BV1GJ411x7h7/?p=2';
+  let prevented = false;
+  state.openBilibiliSiteLink({ currentTarget: { href: url }, preventDefault: () => { prevented = true; } });
+  assert.equal(prevented, true);
+  assert.equal(messages.at(-1), `bilibili:browse:${url}`);
+
+  receiveMessage({ data: `bilibili:play:${url}` });
+  assert.equal(state.viewMode.value, 'bilibili');
+  assert.match(state.bilibiliVideo.value.embed, /bvid=BV1GJ411x7h7&page=2/);
+  assert.equal(messages.length, 2);
+});
+
 test('favoriting a long series sends metadata without its full episode list', async () => {
   let body;
   const state = client(async (url, options) => { body = JSON.parse(options.body); return response({ is_favorite: true }); });

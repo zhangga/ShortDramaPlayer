@@ -289,9 +289,9 @@
             <button type="submit" :disabled="bilibiliLoading">{{ bilibiliLoading ? '正在解析…' : '打开' }}</button>
           </form>
           <a v-if="bilibiliVideo" class="bilibili-original" :href="bilibiliVideo.original"
-            target="_blank" rel="noopener noreferrer">在 B 站打开</a>
+            target="_blank" rel="noopener noreferrer" @click="openBilibiliSiteLink">在 B 站打开</a>
           <a v-else class="bilibili-original" href="https://www.bilibili.com/"
-            target="_blank" rel="noopener noreferrer">B 站首页</a>
+            target="_blank" rel="noopener noreferrer" @click="openBilibiliSiteLink">B 站首页</a>
         </div>
         <p v-if="bilibiliError" id="bilibili-error" class="bilibili-error" role="alert">{{ bilibiliError }}</p>
         <iframe v-if="bilibiliVideo" :key="bilibiliVideo.embed" :src="bilibiliVideo.embed"

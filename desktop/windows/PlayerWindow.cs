@@ -5,6 +5,7 @@ using System.Drawing;
 using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -45,9 +46,13 @@ internal sealed class PlayerWindow : Form
     private const double MinimumExpandedZoom = 0.10;
     private const double DefaultExpandedZoom = 0.40;
     private const double MaximumExpandedZoom = 0.65;
+    private const string BilibiliHome = "https://www.bilibili.com/";
+    private const string BrowseBilibiliCommand = "bilibili:browse:";
     private readonly WebView2 browser = new WebView2();
+    private readonly WebView2 bilibiliBrowser = new WebView2();
     private readonly Button sizeButton = new Button();
     private readonly Button taskbarButton = new Button();
+    private readonly Button returnToPlayerButton = new Button();
     private readonly Label shortcutLabel = new Label();
     private readonly Label loading = new Label();
     private readonly FlowLayoutPanel toolbar = new FlowLayoutPanel();
@@ -57,6 +62,9 @@ internal sealed class PlayerWindow : Form
     private Uri home;
     private CoreWebView2Frame bilibiliFrame;
     private CoreWebView2Frame taskbarBilibiliFrame;
+    private Task bilibiliBrowserReady;
+    private bool browsingBilibili;
+    private int bilibiliBrowseRequest;
     private bool hotkeyRegistered;
     private bool compact;
     private Rectangle originalBounds;
@@ -116,6 +124,11 @@ internal sealed class PlayerWindow : Form
         browser.Visible = false;
         Controls.Add(browser);
 
+        bilibiliBrowser.Dock = DockStyle.Fill;
+        bilibiliBrowser.DefaultBackgroundColor = BackColor;
+        bilibiliBrowser.Visible = false;
+        Controls.Add(bilibiliBrowser);
+
         loading.Dock = DockStyle.Fill;
         loading.Text = "正在启动播放器…";
         loading.TextAlign = ContentAlignment.MiddleCenter;
@@ -144,8 +157,22 @@ internal sealed class PlayerWindow : Form
         taskbarButton.ForeColor = Color.White;
         taskbarButton.UseVisualStyleBackColor = false;
         taskbarButton.Enabled = false;
-        taskbarButton.Click += async delegate { await EnterTaskbar(); };
+        taskbarButton.Click += async delegate
+        {
+            if (browsingBilibili) await PlayBilibiliPage();
+            else await EnterTaskbar();
+        };
         toolbar.Controls.Add(taskbarButton);
+
+        returnToPlayerButton.Text = "返回播放器";
+        returnToPlayerButton.Size = taskbarButton.Size;
+        returnToPlayerButton.Margin = taskbarButton.Margin;
+        returnToPlayerButton.BackColor = sizeButton.BackColor;
+        returnToPlayerButton.ForeColor = Color.White;
+        returnToPlayerButton.UseVisualStyleBackColor = false;
+        returnToPlayerButton.Visible = false;
+        returnToPlayerButton.Click += async delegate { await ReturnFromBilibiliSite(); };
+        toolbar.Controls.Add(returnToPlayerButton);
 
         shortcutLabel.Text = Shortcut + " 收起／恢复";
         shortcutLabel.AutoSize = true;
@@ -208,12 +235,17 @@ internal sealed class PlayerWindow : Form
                 };
                 frame.Destroyed += delegate { if (bilibiliFrame == frame) bilibiliFrame = null; };
             };
-            core.NewWindowRequested += delegate(object _, CoreWebView2NewWindowRequestedEventArgs pop)
+            core.NewWindowRequested += async delegate(object _, CoreWebView2NewWindowRequestedEventArgs pop)
             {
                 pop.Handled = true;
                 Uri target;
                 if (pop.IsUserInitiated && Uri.TryCreate(pop.Uri, UriKind.Absolute, out target) && target.Scheme == "https")
                 {
+                    if (IsBilibiliSite(target))
+                    {
+                        await OpenBilibiliSite(target.AbsoluteUri);
+                        return;
+                    }
                     try { Process.Start(new ProcessStartInfo(target.AbsoluteUri) { UseShellExecute = true }); }
                     catch (System.ComponentModel.Win32Exception) { }
                 }
@@ -226,41 +258,53 @@ internal sealed class PlayerWindow : Form
             {
                 if (nav.IsSuccess) loading.Visible = false;
                 else if (!browser.Visible) loading.Text = "加载失败。请关闭窗口后重新打开。";
-                browser.Visible = nav.IsSuccess || browser.Visible;
-                taskbarButton.Enabled = nav.IsSuccess;
+                if (!browsingBilibili)
+                {
+                    browser.Visible = nav.IsSuccess || browser.Visible;
+                    taskbarButton.Enabled = nav.IsSuccess;
+                }
             };
             core.WebMessageReceived += async delegate(object _, CoreWebView2WebMessageReceivedEventArgs message)
             {
-                if (!inTaskbar || WindowState == FormWindowState.Minimized || !IsLocal(message.Source)) return;
-                string command = message.WebMessageAsJson;
+                if (WindowState == FormWindowState.Minimized || !IsLocal(message.Source)) return;
+                string command;
+                try { command = message.TryGetWebMessageAsString(); }
+                catch (ArgumentException) { return; }
+                if (command == null) return;
+                if (command.StartsWith(BrowseBilibiliCommand, StringComparison.Ordinal))
+                {
+                    await OpenBilibiliSite(command.Substring(BrowseBilibiliCommand.Length));
+                    return;
+                }
+                if (!inTaskbar) return;
                 switch (command)
                 {
-                    case "\"taskbar:click\"":
+                    case "taskbar:click":
                         taskbarClickTimer.Stop();
                         taskbarClickTimer.Interval = SystemInformation.DoubleClickTime;
                         taskbarClickTimer.Start();
                         break;
-                    case "\"taskbar:toggle\"":
+                    case "taskbar:toggle":
                         await ToggleTaskbarPreview();
                         break;
-                    case "\"taskbar:play\"":
+                    case "taskbar:play":
                         taskbarClickTimer.Stop();
                         await ToggleTaskbarPlayback();
                         break;
-                    case "\"taskbar:exit\"":
+                    case "taskbar:exit":
                         await LeaveTaskbar();
                         break;
-                    case "\"taskbar:back\"":
+                    case "taskbar:back":
                         if (taskbarExpanded) await ToggleTaskbarPreview();
                         else await LeaveTaskbar();
                         break;
-                    case "\"taskbar:drag-start\"":
+                    case "taskbar:drag-start":
                         if (taskbarExpanded) taskbarDragOffset = Cursor.Position - new Size(Location);
                         break;
-                    case "\"taskbar:drag-move\"":
+                    case "taskbar:drag-move":
                         MoveExpandedPreview(Cursor.Position);
                         break;
-                    case "\"taskbar:drag-end\"":
+                    case "taskbar:drag-end":
                         taskbarDragOffset = null;
                         break;
                     default:
@@ -286,6 +330,112 @@ internal sealed class PlayerWindow : Form
         Uri target;
         return Uri.TryCreate(url, UriKind.Absolute, out target)
             && target.Scheme == home.Scheme && target.Host == home.Host && target.Port == home.Port;
+    }
+
+    private static bool IsBilibiliSite(Uri url)
+    {
+        return url != null && url.IsAbsoluteUri && url.Scheme == Uri.UriSchemeHttps && url.IsDefaultPort
+            && url.UserInfo.Length == 0 && (url.IdnHost == "bilibili.com" || url.IdnHost == "b23.tv"
+                || url.IdnHost.EndsWith(".bilibili.com", StringComparison.Ordinal));
+    }
+
+    private async Task InitializeBilibiliBrowser()
+    {
+        string profile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "data", "bilibili-webview");
+        var environment = await CoreWebView2Environment.CreateAsync(null, profile);
+        if (IsDisposed) return;
+        await bilibiliBrowser.EnsureCoreWebView2Async(environment);
+        if (IsDisposed) return;
+        CoreWebView2 site = bilibiliBrowser.CoreWebView2;
+        site.Settings.AreHostObjectsAllowed = false;
+        site.Settings.IsWebMessageEnabled = false;
+        site.Settings.AreDevToolsEnabled = false;
+        site.NavigationStarting += delegate(object _, CoreWebView2NavigationStartingEventArgs nav)
+        {
+            Uri target;
+            nav.Cancel = !Uri.TryCreate(nav.Uri, UriKind.Absolute, out target) || !IsBilibiliSite(target);
+        };
+        site.NewWindowRequested += delegate(object _, CoreWebView2NewWindowRequestedEventArgs pop)
+        {
+            pop.Handled = true;
+            Uri target;
+            if (browsingBilibili && pop.IsUserInitiated && Uri.TryCreate(pop.Uri, UriKind.Absolute, out target) && IsBilibiliSite(target))
+                site.Navigate(target.AbsoluteUri);
+        };
+        site.LaunchingExternalUriScheme += delegate(object _, CoreWebView2LaunchingExternalUriSchemeEventArgs launch) { launch.Cancel = true; };
+        site.PermissionRequested += delegate(object _, CoreWebView2PermissionRequestedEventArgs permission) { permission.State = CoreWebView2PermissionState.Deny; };
+        site.SourceChanged += delegate { UpdateBilibiliPlayButton(); };
+        site.NavigationCompleted += delegate { UpdateBilibiliPlayButton(); };
+        UpdateWebViewMute();
+    }
+
+    private async Task OpenBilibiliSite(string url)
+    {
+        bool resume = string.IsNullOrEmpty(url);
+        Uri target;
+        if (inTaskbar || !Uri.TryCreate(resume ? BilibiliHome : url, UriKind.Absolute, out target) || !IsBilibiliSite(target)) return;
+
+        int request = ++bilibiliBrowseRequest;
+        try
+        {
+            SetBilibiliView(true);
+            await PausePlayerMedia();
+            if (IsDisposed || request != bilibiliBrowseRequest) return;
+            if (bilibiliBrowserReady == null) bilibiliBrowserReady = InitializeBilibiliBrowser();
+            await bilibiliBrowserReady;
+            if (IsDisposed || request != bilibiliBrowseRequest) return;
+            if (!resume || !IsBilibiliSite(bilibiliBrowser.Source)) bilibiliBrowser.CoreWebView2.Navigate(target.AbsoluteUri);
+            if (WindowState != FormWindowState.Minimized) bilibiliBrowser.Focus();
+        }
+        catch (Exception)
+        {
+            if (bilibiliBrowserReady != null && bilibiliBrowserReady.IsFaulted) bilibiliBrowserReady = null;
+            if (IsDisposed || request != bilibiliBrowseRequest) return;
+            SetBilibiliView(false);
+            MessageBox.Show(this, "无法打开 B 站页面，请重试。", AppTitle);
+        }
+    }
+
+    private void SetBilibiliView(bool visible)
+    {
+        browsingBilibili = visible;
+        browser.Visible = !visible;
+        bilibiliBrowser.Visible = visible;
+        returnToPlayerButton.Visible = visible;
+        shortcutLabel.Visible = !visible;
+        taskbarButton.Text = visible ? "在播放器播放" : "任务栏(&T)";
+        taskbarButton.AccessibleName = visible ? "在播放器中打开当前视频" : "在任务栏空位中播放";
+        if (visible) UpdateBilibiliPlayButton();
+        else taskbarButton.Enabled = browser.CoreWebView2 != null;
+        UpdateWebViewMute();
+    }
+
+    private Uri BilibiliVideoPage()
+    {
+        Uri current = bilibiliBrowser.CoreWebView2 == null ? null : bilibiliBrowser.Source;
+        return IsBilibiliSite(current) && (current.IdnHost == "www.bilibili.com" || current.IdnHost == "m.bilibili.com" || current.IdnHost == "bilibili.com")
+            && Regex.IsMatch(current.AbsolutePath, @"^/video/(BV[A-Za-z0-9]{10}|av[1-9]\d{0,17})/?$") ? current : null;
+    }
+
+    private void UpdateBilibiliPlayButton()
+    {
+        if (browsingBilibili) taskbarButton.Enabled = BilibiliVideoPage() != null;
+    }
+
+    private async Task ReturnFromBilibiliSite()
+    {
+        bilibiliBrowseRequest++;
+        SetBilibiliView(false);
+        await PauseBilibiliSite();
+    }
+
+    private async Task PlayBilibiliPage()
+    {
+        Uri video = BilibiliVideoPage();
+        if (video == null) return;
+        await ReturnFromBilibiliSite();
+        if (!IsDisposed && !browsingBilibili && IsLocal(browser.CoreWebView2.Source))
+            browser.CoreWebView2.PostWebMessageAsString("bilibili:play:" + video.AbsoluteUri);
     }
 
     private async Task<int> StartService(string root, string data)
@@ -484,16 +634,16 @@ internal sealed class PlayerWindow : Form
         bool fromWheel = false;
         switch (command)
         {
-            case "\"taskbar:zoom-in\"":
+            case "taskbar:zoom-in":
                 zoom = Math.Min(maximum, zoom * 1.35);
                 fromWheel = true;
                 break;
-            case "\"taskbar:zoom-out\"":
+            case "taskbar:zoom-out":
                 zoom = Math.Max(minimum, zoom / 1.35);
                 fromWheel = true;
                 break;
-            case "\"taskbar:max\"": zoom = taskbarExpanded ? maximum : double.PositiveInfinity; break;
-            case "\"taskbar:fit\"": zoom = taskbarExpanded ? DefaultExpandedZoom : minimum; break;
+            case "taskbar:max": zoom = taskbarExpanded ? maximum : double.PositiveInfinity; break;
+            case "taskbar:fit": zoom = taskbarExpanded ? DefaultExpandedZoom : minimum; break;
             default: return;
         }
         if (taskbarExpanded)
@@ -627,23 +777,41 @@ internal sealed class PlayerWindow : Form
         if (!minimized) lastVisibleState = WindowState;
         if (wasMinimized == minimized) return;
         wasMinimized = minimized;
-        if (minimized)
-        {
-            taskbarClickTimer.Stop();
-            taskbarDragOffset = null;
-        }
+        UpdateWebViewMute();
+        if (!minimized) return;
+        taskbarClickTimer.Stop();
+        taskbarDragOffset = null;
+        if (browsingBilibili) await PauseBilibiliSite();
+        else await PausePlayerMedia();
+    }
+
+    private void UpdateWebViewMute()
+    {
+        bool minimized = WindowState == FormWindowState.Minimized;
+        CoreWebView2 player = browser.CoreWebView2;
+        CoreWebView2 site = bilibiliBrowser.CoreWebView2;
+        if (player != null) player.IsMuted = minimized || browsingBilibili;
+        if (site != null) site.IsMuted = minimized || !browsingBilibili;
+    }
+
+    private async Task PausePlayerMedia()
+    {
         CoreWebView2 core = browser.CoreWebView2;
-        if (core == null) return;
-        core.IsMuted = minimized;
-        if (minimized)
+        if (core == null || !IsLocal(core.Source)) return;
+        try
         {
-            try
-            {
-                await core.ExecuteScriptAsync(PauseMediaScript);
-                if (bilibiliFrame != null) await bilibiliFrame.ExecuteScriptAsync(PauseMediaScript);
-            }
-            catch (InvalidOperationException) { }
+            await core.ExecuteScriptAsync(PauseMediaScript);
+            if (bilibiliFrame != null) await bilibiliFrame.ExecuteScriptAsync(PauseMediaScript);
         }
+        catch (InvalidOperationException) { }
+    }
+
+    private async Task PauseBilibiliSite()
+    {
+        CoreWebView2 site = bilibiliBrowser.CoreWebView2;
+        if (site == null || !IsBilibiliSite(bilibiliBrowser.Source)) return;
+        try { await site.ExecuteScriptAsync(PauseMediaScript); }
+        catch (InvalidOperationException) { }
     }
 
     protected override void WndProc(ref Message message)
@@ -669,6 +837,7 @@ internal sealed class PlayerWindow : Form
         taskbarClickTimer.Dispose();
         if (hotkeyRegistered) UnregisterHotKey(Handle, HotkeyId);
         browser.Dispose();
+        bilibiliBrowser.Dispose();
         StopService();
         base.OnFormClosed(args);
     }
