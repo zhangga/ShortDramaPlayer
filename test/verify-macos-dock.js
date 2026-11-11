@@ -170,8 +170,13 @@ async function verify(executable) {
       return x < previousLocation[0] && y < previousLocation[1];
     }, 'drag the expanded preview');
     const leave = async () => {
-      await overlay.click('right', 1);
-      await until(() => player.evaluate("!document.documentElement.classList.contains('taskbar-preview') && document.querySelector('.mac-player-controls').textContent.includes('大窗')"), 'right click to return to the compact player');
+      // macOS can destroy the overlay on right-button press before CDP acknowledges release.
+      const click = overlay.click('right', 1).catch(error => error);
+      try {
+        await until(() => player.evaluate("!document.documentElement.classList.contains('taskbar-preview') && document.querySelector('.mac-player-controls').textContent.includes('大窗')"), 'right click to return to the compact player');
+      } catch (error) {
+        throw (await click) ?? error;
+      }
     };
     await leave();
     overlay = await enter();
