@@ -1,0 +1,29 @@
+短剧小窗 · Windows x64
+
+1. 把 ZIP 完整解压到可写的文件夹，双击 ShortDramaPlayer.exe。
+2. 输入剧名并搜索，点封面进入播放。右上角的选集按钮可以打开分集列表。
+3. 点窗口上方的「小窗」，切换到置顶竖屏。点「大窗」恢复原尺寸。
+4. Ctrl + Alt + F9 可以在其他应用里收起或恢复播放窗口。收起时暂停正在播放的视频并静音。恢复后点播放继续。
+5. 播放时点「任务栏」。画面用满主任务栏高度，并在最宽的空位里默认放大约 3 倍。
+6. 鼠标放在预览上滚动可缩放，右键可拉满空位，单击可展开到竖屏小窗。预览获得键盘焦点时，可按 Home 看完整画面，按 End 拉满空位。
+
+预览放大时会裁切画面，以保留原始比例。任务栏自动隐藏或空位不足时，可继续使用竖屏小窗。
+升级时如需保留播放进度和收藏，请先关闭旧版，再把旧版的 data 文件夹复制到新版目录。
+
+运行条件
+Windows 10/11 x64、.NET Framework 4.8、Microsoft Edge WebView2 Runtime、网络连接。
+缺少 WebView2 时可从微软下载安装：https://developer.microsoft.com/microsoft-edge/webview2/
+部分剧集使用 HEVC。若只有这类剧集不能播放，请检查 Windows 是否支持 HEVC 解码。
+
+片源和数据
+内容通过红果开源播放器项目使用的非公开接口获取。具体集数的可用性随片源和网络变化。
+播放进度、收藏和日志保存在解压目录内的 data 文件夹中。
+
+开源来源
+基于 zfdang/hongguo-open-player（GPL-3.0-only），上游提交 3f687c5b07e04eb194141f8eeb78ded86d646024。
+https://github.com/zfdang/hongguo-open-player/tree/3f687c5b07e04eb194141f8eeb78ded86d646024
+2026-11-11 修改内容包括 Windows 外壳、任务栏预览、小窗布局、全局快捷键和 CDN 跳转兼容。
+播放器源码及许可证位于 player 文件夹。Windows 外壳用 player/desktop/windows/build-host.ps1 编译。
+编译使用 .NET Framework 4.8 开发人员包和 WebView2 SDK 1.0.4314.35，播放服务依赖用 npm ci --omit=dev --ignore-scripts 安装。
+运行包内含 Node.js v22.23.4，依赖许可证见 runtime 文件夹及 player/node_modules。
+部分 ByteVC2 剧集由附带的 FFmpeg 转码。对应的 FFmpeg/x264 源码、补丁和构建命令位于 player/codec-source。

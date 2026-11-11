@@ -44,7 +44,7 @@ class StreamService {
       'Accept-Encoding': 'identity'
     };
 
-    const guarded = { ...this.requestOptions(url), maxRedirects: 0 };
+    const guarded = this.requestOptions(url);
     const fragments = new AbortController();
     const transferSignal = signal ? AbortSignal.any([signal, fragments.signal]) : fragments.signal;
     const tasks = [];

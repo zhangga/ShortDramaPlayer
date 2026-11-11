@@ -6,7 +6,7 @@ const logger = require('./logger');
 
 async function prepareRangeMedia(variant, requestOptions, signal) {
   const headers = { 'Accept-Encoding': 'identity', ...(variant.userAgent ? { 'User-Agent': variant.userAgent } : {}) };
-  const options = { ...requestOptions(variant.url), maxRedirects: 0, headers, signal,
+  const options = { ...requestOptions(variant.url), headers, signal,
     timeout: 15000, responseType: 'arraybuffer', maxContentLength: 4 * 1024 * 1024 };
   let total;
   let prefix;

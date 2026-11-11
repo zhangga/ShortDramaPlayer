@@ -1,0 +1,8 @@
+Windows x64 FFmpeg decoder, GPL-3.0-or-later
+
+The pinned source archives and ByteVC2 patch are included here.
+Use MSYS2 UCRT64 with GCC, GNU make, Git, and tar.
+Download pkgconf-3.0.9-1-x86_64.pkg.tar.zst from
+https://repo.msys2.org/msys/x86_64/ and save it as pkgconf.tar.zst alongside the source archives.
+From this directory run: bash scripts/build-bytevc2-windows.sh .
+The build writes ffmpeg.exe and license files alongside the source archives.

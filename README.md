@@ -1,3 +1,12 @@
+# ShortDramaPlayer
+
+短剧小窗的 Windows x64 便携版，支持独立播放、竖屏小窗、任务栏预览缩放以及全局收起快捷键。
+
+- [Windows 构建与维护](docs/windows-maintenance.md)
+- [播放器使用说明](desktop/windows/使用说明.txt)
+
+---
+
 <p><img src="src/client/assets/app-icon.png" alt="红果开源播放器：开放圆环与播放键图标" width="96" height="96"></p>
 
 # 红果开源播放器 (Hongguo Open Player)

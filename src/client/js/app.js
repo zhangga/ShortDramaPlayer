@@ -79,7 +79,11 @@ createApp({
     const toastText = ref('');
     const osdMessage = ref('');
     let toastTimer, osdTimer;
-    const sidebarOpen = ref(true);
+    const compactViewport = window.matchMedia?.('(max-width: 460px)');
+    const sidebarOpen = ref(!compactViewport?.matches);
+    function collapseCompactSidebar() {
+      if (compactViewport?.matches) sidebarOpen.value = false;
+    }
     const isScrubbing = ref(false);
     const isFullscreen = ref(false);
     const isControlsHidden = ref(false);
@@ -1393,7 +1397,18 @@ createApp({
       nextTick(() => window.scrollTo?.(0, catalogScrollTop));
     }
 
+    function taskbarCommand(command) {
+      if (command === 'fit') document.documentElement.classList.add('taskbar-fit');
+      else if (command === 'zoom-in' || command === 'max') document.documentElement.classList.remove('taskbar-fit');
+      window.chrome?.webview?.postMessage('taskbar:' + command);
+    }
+
+    function zoomTaskbarFromWheel(event) {
+      if (event.deltaY) taskbarCommand(event.deltaY < 0 ? 'zoom-in' : 'zoom-out');
+    }
+
     function switchEpisode(ep) {
+      collapseCompactSidebar();
       if (activeEpisodeIndex.value === ep.vid_index) return;
       saveProgressNow();
       resetPlayback();
@@ -1900,6 +1915,7 @@ createApp({
     }
 
     onMounted(() => {
+      compactViewport?.addEventListener?.('change', collapseCompactSidebar);
       loadPreferences();
       loadSearchHistory();
       loadCatalog();
@@ -1925,6 +1941,7 @@ createApp({
     });
 
     onUnmounted(() => {
+      compactViewport?.removeEventListener?.('change', collapseCompactSidebar);
       bytevc2Session?.stop();
       stopDanmakuAnimation();
       window.removeEventListener('keydown', handleKeyDown);
@@ -2003,7 +2020,7 @@ createApp({
       onTimeUpdate,
       onEnded,
       onVideoError,
-      retryCurrentEpisode,
+      retryCurrentEpisode, taskbarCommand, zoomTaskbarFromWheel,
       formatTime,
       isEpisodeWatched,
       onImageError,

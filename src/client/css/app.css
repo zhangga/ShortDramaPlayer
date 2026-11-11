@@ -2964,6 +2964,52 @@ html.platform-win .app-header { padding-right: 160px; }
   .playing-title { max-width: 130px; }
   .player-header { padding: 0 8px; gap: 5px; }
 }
+@media (max-width: 460px) {
+  .app-header { gap: 6px; padding-inline: 8px; }
+  .header-left { gap: 6px; }
+  .player-header .back-btn { padding: 5px 7px; white-space: nowrap; }
+  .player-header .player-actions { gap: 4px; flex-shrink: 0; }
+  .player-header .fav-action-btn { display: none; }
+  .player-header .sidebar-toggle-btn { min-width: 32px; min-height: 32px; padding: 4px; }
+  .player-header .sidebar-toggle-label { display: none; }
+  .controls-toolbar { flex-wrap: wrap; row-gap: 2px; }
+  .theater-sidebar { bottom: 120px; }
+}
+.theater-view .ctrl-btn:focus-visible,
+.theater-view .episode-btn:focus-visible,
+.theater-view .group-tab-item:focus-visible {
+  outline: 2px solid var(--text-main);
+  outline-offset: -2px;
+}
+.taskbar-strip-button { display: none; }
+
+html.taskbar-preview .app-header,
+html.taskbar-preview .player-header,
+html.taskbar-preview .player-controls,
+html.taskbar-preview .theater-sidebar,
+html.taskbar-preview .video-stage > :not(video) {
+  display: none !important;
+}
+
+html.taskbar-preview .theater-view { top: 0; height: 100dvh; }
+html.taskbar-preview .player-container { border: 0; }
+html.taskbar-preview .video-stage {
+  pointer-events: none;
+}
+html.taskbar-preview .video-element { object-fit: cover; object-position: 50% 42%; }
+html.taskbar-preview.taskbar-fit .video-element { object-fit: contain; object-position: center; }
+
+html.taskbar-preview .taskbar-strip-button {
+  position: absolute;
+  inset: 0;
+  display: block;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+html.taskbar-preview .taskbar-strip-button:focus-visible { outline: 2px solid var(--text-main); outline-offset: -2px; }
+
 @media (prefers-reduced-motion: reduce) { .skeleton-cover, .skeleton-line { animation: none; } }
 
 .danmaku-layer { container-type: inline-size; position: absolute; inset: 60px 0 auto; height: 96px; overflow: hidden; pointer-events: none; z-index: 2; }

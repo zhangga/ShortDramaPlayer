@@ -41,6 +41,34 @@ test('a CDN ignoring Range is detected before buffering its full response', asyn
   await assert.rejects(prepareRangeMedia({ url: `http://127.0.0.1:${server.address().port}` }, () => ({}), new AbortController().signal), { code: 'RANGE_UNSUPPORTED' });
 });
 
+test('the Range probe honors checked CDN redirects', async t => {
+  const key = crypto.randomBytes(16);
+  const encrypted = encryptedMp4(crypto.randomBytes(128), key, crypto.randomBytes(8));
+  const server = http.createServer((req, res) => {
+    if (req.url === '/') {
+      res.writeHead(302, { Location: '/edge' });
+      return res.end();
+    }
+    assert.equal(req.headers.range, 'bytes=0-65535');
+    res.writeHead(206, { 'Content-Range': `bytes 0-${encrypted.length - 1}/${encrypted.length}` });
+    res.end(encrypted);
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  let checked = false;
+  const options = () => ({
+    maxRedirects: 1,
+    beforeRedirect(_request, response) {
+      assert.equal(response.headers.location, '/edge');
+      checked = true;
+    }
+  });
+  const variant = { url: `http://127.0.0.1:${server.address().port}`, contentKey: key };
+  const plan = await prepareRangeMedia(variant, options, new AbortController().signal);
+  assert.ok(checked);
+  assert.ok(plan.size > 0);
+});
+
 test('streams clear MP4 without a key and rejects encrypted MP4 without one', async t => {
   const key = crypto.randomBytes(16);
   const encrypted = encryptedMp4(crypto.randomBytes(1024), key, crypto.randomBytes(8));

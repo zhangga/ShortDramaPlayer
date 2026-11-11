@@ -30,6 +30,7 @@ permissions:
 
 jobs:
   prep:
+    if: github.repository == 'zfdang/hongguo-open-player'
     name: Prepare Release Version
     runs-on: ubuntu-24.04
     outputs:

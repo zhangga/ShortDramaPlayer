@@ -295,6 +295,7 @@
                 @click="sidebarOpen = !sidebarOpen" 
                 :aria-expanded="sidebarOpen" 
                 aria-controls="episode-sidebar" 
+                :aria-label="sidebarOpen ? '隐藏选集' : '显示选集'"
                 :title="sidebarOpen ? '隐藏侧边栏' : '显示侧边栏'"
               >
                 <svg v-if="sidebarOpen" class="sidebar-toggle-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
@@ -354,6 +355,12 @@
           </div>
 
           <!-- 播放器控制条 -->
+          <button type="button" class="taskbar-strip-button"
+            aria-label="展开为竖屏小窗。Home 查看全画面，End 最大化任务栏预览"
+            title="滚轮缩放，右键拉满，单击展开"
+            @click="taskbarCommand('expand')" @keydown.esc.stop="taskbarCommand('expand')"
+            @wheel.prevent.stop="zoomTaskbarFromWheel" @contextmenu.prevent.stop="taskbarCommand('max')"
+            @keydown.end.prevent.stop="taskbarCommand('max')" @keydown.home.prevent.stop="taskbarCommand('fit')"></button>
           <div class="player-controls" @pointerenter="clearControlsTimer" @pointerleave="resetControlsTimer">
             <!-- 进度条 -->
             <div class="progress-bar-container" :class="{ 'is-scrubbing': isScrubbing }" @pointermove="previewSeek" @pointerleave="showPreview = false">
