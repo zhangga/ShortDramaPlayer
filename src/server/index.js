@@ -18,7 +18,7 @@ app.use((req, res, next) => {
     'X-Frame-Options': 'DENY',
     'Referrer-Policy': 'no-referrer',
     // Vue's local template compiler currently requires unsafe-eval.
-    'Content-Security-Policy': "default-src 'none'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' blob:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
+    'Content-Security-Policy': "default-src 'none'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' blob:; connect-src 'self'; font-src 'self'; frame-src https://player.bilibili.com; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
   });
   next();
 });
@@ -94,6 +94,29 @@ function sendApiError(res, error) {
 app.get('/api/system/version', (_req, res) => {
   res.set('Cache-Control', 'no-store');
   res.json({ version: require('../../package.json').version });
+});
+
+app.get('/api/bilibili/short-link', async (req, res) => {
+  const { code } = req.query;
+  if (typeof code !== 'string' || !/^[A-Za-z0-9]{1,32}(?:\/p[1-9]\d{0,5})?$/.test(code)) {
+    return res.status(400).json({ error: 'B 站短链接格式无效' });
+  }
+
+  try {
+    const upstream = await fetch(`https://b23.tv/${code}`, { redirect: 'manual', signal: AbortSignal.timeout(6000) });
+    const location = upstream.headers.get('location');
+    await upstream.body?.cancel();
+    if ([301, 302, 303, 307, 308].includes(upstream.status) && location) {
+      const video = new URL(location);
+      if (video.protocol === 'https:' && !video.port && !video.username && !video.password &&
+          /^(?:www\.|m\.)?bilibili\.com$/.test(video.hostname) && /^\/video\//.test(video.pathname)) {
+        return res.json({ url: video.href });
+      }
+    }
+    res.status(422).json({ error: '这条短链接没有指向 B 站视频' });
+  } catch (_) {
+    res.status(502).json({ error: 'B 站短链接暂时无法解析' });
+  }
 });
 
 app.get('/api/danmaku/:seriesId/:vid', async (req, res) => {

@@ -59,6 +59,7 @@ test('loopback API blocks foreign origins and hosts and returns JSON errors', as
   assert.equal(home.headers.get('x-frame-options'), 'DENY');
   assert.equal(home.headers.get('x-content-type-options'), 'nosniff');
   assert.match(home.headers.get('content-security-policy'), /frame-ancestors 'none'/);
+  assert.match(home.headers.get('content-security-policy'), /(?:^|; )frame-src https:\/\/player\.bilibili\.com;/);
   assert.equal((await fetch(`${base}/api/history`)).status, 401);
   assert.equal((await fetch(`${base}/API/history`)).status, 401);
   assert.equal((await fetch(`${base}/Api/History`)).status, 401);
@@ -92,6 +93,36 @@ test('API exceptions do not expose filesystem or upstream request details', asyn
   const response = await fetch(`${base}/api/series/1`, { headers: { Cookie: home.headers.get('set-cookie').split(';')[0] } });
   assert.equal(response.status, 500);
   assert.equal((await response.json()).error, '操作失败，请稍后重试');
+});
+
+test('Bilibili short links resolve only to HTTPS video pages on Bilibili', async t => {
+  const fetchLocal = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url, redirect: options.redirect });
+    const location = url.endsWith('/Ab12Z')
+      ? 'https://www.bilibili.com/video/BV1GJ411x7h7?p=2'
+      : 'https://elsewhere.example/video/BV1GJ411x7h7';
+    return new Response(null, { status: 302, headers: { location } });
+  };
+  t.after(() => { globalThis.fetch = fetchLocal; });
+
+  const { server, port } = await startServer(0);
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const base = `http://127.0.0.1:${port}`;
+  const home = await fetchLocal(base);
+  const Cookie = home.headers.get('set-cookie').split(';')[0];
+  const resolve = code => fetchLocal(`${base}/api/bilibili/short-link?code=${encodeURIComponent(code)}`, { headers: { Cookie } });
+
+  const good = await resolve('Ab12Z');
+  assert.equal(good.status, 200);
+  assert.deepEqual(await good.json(), { url: 'https://www.bilibili.com/video/BV1GJ411x7h7?p=2' });
+  assert.equal((await resolve('Elsewhere')).status, 422);
+  assert.equal((await resolve('../private')).status, 400);
+  assert.deepEqual(calls, [
+    { url: 'https://b23.tv/Ab12Z', redirect: 'manual' },
+    { url: 'https://b23.tv/Elsewhere', redirect: 'manual' }
+  ]);
 });
 
 test('servers on different ports isolate cookies via port-specific cookie names', async t => {

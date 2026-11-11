@@ -24,6 +24,10 @@
 
 支持 Windows 10/11 x64。运行需要网络连接、.NET Framework 4.8 和 Microsoft Edge WebView2 Runtime。[下载 WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)
 
+## 观看哔哩哔哩
+
+点顶栏的「哔哩哔哩」，粘贴 B 站视频页链接、`b23.tv` 分享短链接，或输入 BV、av 号，再点「打开」。带 `?p=2` 等参数的链接会打开对应分 P。视频开始播放后，可以点 Windows 顶栏的「任务栏」，用与红果相同的方式观看。遇到无法嵌入的视频，可点「在 B 站打开」。
+
 ## 小窗与任务栏观看
 
 | 操作 | 效果 |

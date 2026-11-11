@@ -23,13 +23,13 @@
           <button class="nav-item" :class="{ active: currentTab === 'real-drama' && viewMode === 'catalog' }" @click="switchTab('real-drama')">🎭 真人短剧</button>
           <button class="nav-item" :class="{ active: currentTab === 'comic-drama' && viewMode === 'catalog' }" @click="switchTab('comic-drama')">🎨 精品漫剧</button>
           <button class="nav-item" :class="{ active: currentTab === 'ai-drama' && viewMode === 'catalog' }" @click="switchTab('ai-drama')">🤖 AI 短剧</button>
-          <button class="nav-item" :class="{ active: currentTab === 'history' }" @click="switchTab('history')">🕒 观影历史</button>
-          <button class="nav-item" :class="{ active: currentTab === 'favorites' }" @click="switchTab('favorites')">⭐ 我的收藏</button>
+          <button class="nav-item" :class="{ active: currentTab === 'history' && viewMode !== 'bilibili' }" @click="switchTab('history')">🕒 观影历史</button>
+          <button class="nav-item" :class="{ active: currentTab === 'favorites' && viewMode !== 'bilibili' }" @click="switchTab('favorites')">⭐ 我的收藏</button>
         </nav>
       </div>
 
       <div class="header-right">
-        <div class="search-box" :class="{ 'has-query': searchKeyword.trim() }" @focusout="onSearchFocusOut" @keydown.esc="showSearchHistory = false">
+        <div v-if="viewMode !== 'bilibili'" class="search-box" :class="{ 'has-query': searchKeyword.trim() }" @focusout="onSearchFocusOut" @keydown.esc="showSearchHistory = false">
           <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
           <input 
             type="text" 
@@ -52,6 +52,9 @@
             </div>
           </div>
         </div>
+
+        <button type="button" class="nav-item bilibili-nav" :class="{ active: viewMode === 'bilibili' }"
+          :aria-pressed="viewMode === 'bilibili'" @click="showBilibili">哔哩哔哩</button>
 
         <!-- 菜单与帮助入口 (类似 Android 三横线菜单图标) -->
         <div class="header-menu-container">
@@ -275,6 +278,27 @@
         </div>
       </div>
 
+      <section v-if="viewMode === 'bilibili'" class="bilibili-view" aria-labelledby="bilibili-title">
+        <h1 id="bilibili-title">哔哩哔哩</h1>
+        <div class="bilibili-toolbar">
+          <form class="bilibili-form" @submit.prevent="openBilibiliVideo">
+            <input ref="bilibiliInputEl" v-model="bilibiliInput" type="text" maxlength="2048"
+              placeholder="粘贴 B 站分享链接或输入 BV 号" aria-label="B 站分享链接或 BV 号"
+              :aria-invalid="Boolean(bilibiliError)" :aria-describedby="bilibiliError ? 'bilibili-error' : undefined"
+              autocomplete="off" spellcheck="false" @input="bilibiliError = ''">
+            <button type="submit" :disabled="bilibiliLoading">{{ bilibiliLoading ? '正在解析…' : '打开' }}</button>
+          </form>
+          <a v-if="bilibiliVideo" class="bilibili-original" :href="bilibiliVideo.original"
+            target="_blank" rel="noopener noreferrer">在 B 站打开</a>
+          <a v-else class="bilibili-original" href="https://www.bilibili.com/"
+            target="_blank" rel="noopener noreferrer">B 站首页</a>
+        </div>
+        <p v-if="bilibiliError" id="bilibili-error" class="bilibili-error" role="alert">{{ bilibiliError }}</p>
+        <iframe v-if="bilibiliVideo" :key="bilibiliVideo.embed" :src="bilibiliVideo.embed"
+          class="bilibili-frame" title="哔哩哔哩视频播放器" name="bilibili-player"
+          sandbox="allow-scripts allow-same-origin" allowfullscreen></iframe>
+      </section>
+
       <!-- 沉浸式剧场/播放器视图 -->
       <div v-if="viewMode === 'theater'" class="theater-view">
         <!-- 播放器主体 (竖屏 9:16) -->
@@ -355,12 +379,6 @@
           </div>
 
           <!-- 播放器控制条 -->
-          <button type="button" class="taskbar-preview-button"
-            aria-label="展开完整画面"
-            @focusin.stop @click="handleTaskbarClick" @dblclick.prevent.stop="handleTaskbarDoubleClick"
-            @pointerdown="startTaskbarDrag" @pointermove="moveTaskbarDrag"
-            @pointerup="finishTaskbarDrag" @pointercancel="finishTaskbarDrag" @lostpointercapture="finishTaskbarDrag"
-            @wheel.prevent.stop="zoomTaskbarFromWheel" @contextmenu.prevent.stop="taskbarCommand('exit')"></button>
           <div class="player-controls" @pointerenter="clearControlsTimer" @pointerleave="resetControlsTimer">
             <!-- 进度条 -->
             <div class="progress-bar-container" :class="{ 'is-scrubbing': isScrubbing }" @pointermove="previewSeek" @pointerleave="showPreview = false">
@@ -576,6 +594,12 @@
           </div>
         </aside>
       </div>
+      <button v-if="viewMode === 'theater' || (viewMode === 'bilibili' && bilibiliVideo)" type="button" class="taskbar-preview-button"
+        aria-label="展开完整画面"
+        @focusin.stop @click="handleTaskbarClick" @dblclick.prevent.stop="handleTaskbarDoubleClick"
+        @pointerdown="startTaskbarDrag" @pointermove="moveTaskbarDrag"
+        @pointerup="finishTaskbarDrag" @pointercancel="finishTaskbarDrag" @lostpointercapture="finishTaskbarDrag"
+        @wheel.prevent.stop="zoomTaskbarFromWheel" @contextmenu.prevent.stop="taskbarCommand('exit')"></button>
     </main>
 
     <!-- 演员个人主页与参演短剧弹窗 -->

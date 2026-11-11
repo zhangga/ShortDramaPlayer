@@ -100,6 +100,62 @@ test('a pending drama detail cannot reopen theater after navigating away', async
   assert.equal(state.viewMode.value, 'catalog');
 });
 
+test('Bilibili accepts video identifiers and uses only the official embed origin', async () => {
+  let resolveDetail;
+  const state = client(url => url.startsWith('/api/series/')
+    ? new Promise(resolve => { resolveDetail = resolve; }) : Promise.resolve(response([])), { URL });
+  const opening = state.openTheater({ series_id: '1' });
+  state.showBilibili();
+  resolveDetail(response({ series_id: '1', episodes: [{ vid: '1', vid_index: 1 }] }));
+  await opening;
+  assert.equal(state.viewMode.value, 'bilibili');
+
+  state.bilibiliInput.value = 'https://www.bilibili.com/video/BV1MW421X7gM/?p=2&share_source=copy';
+  await state.openBilibiliVideo();
+  assert.equal(state.bilibiliVideo.value.embed, 'https://player.bilibili.com/player.html?bvid=BV1MW421X7gM&page=2&autoplay=0');
+  assert.equal(state.bilibiliVideo.value.original, 'https://www.bilibili.com/video/BV1MW421X7gM/?p=2');
+
+  state.bilibiliInput.value = ' av170001 ';
+  await state.openBilibiliVideo();
+  const previous = state.bilibiliVideo.value;
+  assert.equal(previous.embed, 'https://player.bilibili.com/player.html?aid=170001&page=1&autoplay=0');
+  for (const input of ['https://www.bilibili.com.example.org/video/BV1MW421X7gM', 'https://www.bilibili.com@elsewhere.org/video/BV1MW421X7gM', 'javascript:alert(1)']) {
+    state.bilibiliInput.value = input;
+    await state.openBilibiliVideo();
+    assert.equal(state.bilibiliVideo.value, previous);
+    assert.ok(state.bilibiliError.value);
+  }
+});
+
+test('Bilibili resolves pasted share text and ignores a short link after switching away', async () => {
+  const requests = [];
+  let resolveShortLink;
+  const state = client(url => {
+    if (!url.startsWith('/api/bilibili/short-link?')) return Promise.resolve(response([]));
+    requests.push(url);
+    return new Promise(resolve => { resolveShortLink = resolve; });
+  }, { URL });
+  state.showBilibili();
+  state.bilibiliInput.value = '【视频标题】 https://b23.tv/Ab12Z。';
+  const opening = state.openBilibiliVideo();
+  assert.equal(state.bilibiliLoading.value, true);
+  assert.deepEqual(requests, ['/api/bilibili/short-link?code=Ab12Z']);
+  resolveShortLink(response({ url: 'https://www.bilibili.com/video/BV1GJ411x7h7?p=2' }));
+  await opening;
+  assert.match(state.bilibiliVideo.value.embed, /bvid=BV1GJ411x7h7&page=2/);
+  assert.equal(state.bilibiliLoading.value, false);
+
+  const previous = state.bilibiliVideo.value;
+  state.bilibiliInput.value = 'https://b23.tv/Other';
+  const late = state.openBilibiliVideo();
+  state.switchTab('hot-drama');
+  state.showBilibili();
+  resolveShortLink(response({ url: 'https://www.bilibili.com/video/BV1MW421X7gM' }));
+  await late;
+  assert.equal(state.bilibiliVideo.value, previous);
+  assert.equal(state.bilibiliLoading.value, false);
+});
+
 test('favoriting a long series sends metadata without its full episode list', async () => {
   let body;
   const state = client(async (url, options) => { body = JSON.parse(options.body); return response({ is_favorite: true }); });

@@ -9,7 +9,7 @@ document.documentElement.classList.add(isDesktop ? (isMac ? 'platform-mac' : /Wi
 createApp({
   setup() {
     // 视图模式与导航状态
-    const viewMode = ref('catalog'); // 'catalog' | 'theater'
+    const viewMode = ref('catalog'); // 'catalog' | 'theater' | 'bilibili'
     const currentTab = ref('hot-drama'); // 'hot-drama' | 'real-drama' | 'comic-drama' | 'ai-drama' | 'history' | 'favorites' | 'search'
     const searchKeyword = ref('');
     const searchHistory = ref([]);
@@ -17,6 +17,12 @@ createApp({
     let searchHistoryRevision = 0;
     let searchHistoryQueue = Promise.resolve();
     const hotTags = ref(['离婚', '战神', '重生', '逆袭', '神医', '千金', '豪门', '甜宠']);
+    const bilibiliInput = ref('');
+    const bilibiliInputEl = ref(null);
+    const bilibiliVideo = ref(null);
+    const bilibiliError = ref('');
+    const bilibiliLoading = ref(false);
+    let bilibiliRequest = 0;
 
     // 目录与短剧列表
     const currentDramas = ref([]);
@@ -705,6 +711,75 @@ createApp({
       switchTab('hot-drama');
     }
 
+    function showBilibili() {
+      if (viewMode.value !== 'bilibili') {
+        leaveTheater();
+        closeActorDetail();
+        viewMode.value = 'bilibili';
+      }
+      nextTick(() => bilibiliInputEl.value?.focus());
+    }
+
+    async function openBilibiliVideo() {
+      const request = ++bilibiliRequest;
+      const text = bilibiliInput.value.trim();
+      let input = /https?:\/\/(?:b23\.tv|(?:www\.|m\.)?bilibili\.com)\/[^\s<>"，。！？】）]+/i.exec(text)?.[0] || text;
+      const shortCode = /^(?:https?:\/\/)?b23\.tv\/([A-Za-z0-9]{1,32}(?:\/p[1-9]\d{0,5})?)\/?(?:[?#].*)?$/i.exec(input)?.[1];
+      bilibiliLoading.value = Boolean(shortCode);
+      bilibiliError.value = '';
+
+      if (shortCode) {
+        try {
+          const response = await fetch(`/api/bilibili/short-link?code=${encodeURIComponent(shortCode)}`);
+          if (!response.ok) throw new Error('短链接解析失败');
+          input = (await response.json()).url;
+        } catch (_) {
+          if (request === bilibiliRequest) bilibiliError.value = '无法打开这条短链接。请重试，或粘贴 B 站视频页链接。';
+          return;
+        } finally {
+          if (request === bilibiliRequest) bilibiliLoading.value = false;
+        }
+      }
+
+      if (request !== bilibiliRequest) return;
+      const video = parseBilibiliVideo(input);
+      if (!video) {
+        bilibiliError.value = '请输入 B 站视频页链接、分享短链接、BV 号或 av 号。';
+        bilibiliInputEl.value?.focus();
+        return;
+      }
+      bilibiliVideo.value = video;
+    }
+
+    function parseBilibiliVideo(input) {
+      const videoIdPattern = /^(?:BV[A-Za-z0-9]{10}|av[1-9]\d{0,17})$/;
+      let videoId = input;
+      let page = '1';
+      if (!videoIdPattern.test(videoId)) {
+        let link;
+        try {
+          link = new URL(/^(?:www\.|m\.)?bilibili\.com\//i.test(input) ? `https://${input}` : input);
+        } catch (_) {
+          return null;
+        }
+        if (!['https:', 'http:'].includes(link.protocol) || link.port || link.username || link.password ||
+            !/^(?:www\.|m\.)?bilibili\.com$/.test(link.hostname)) return null;
+        videoId = /^\/video\/([^/]+)\/?$/.exec(link.pathname)?.[1];
+        if (!videoIdPattern.test(videoId)) return null;
+        const requestedPage = link.searchParams.get('p');
+        if (/^[1-9]\d{0,5}$/.test(requestedPage)) page = requestedPage;
+      }
+
+      const embed = new URL('https://player.bilibili.com/player.html');
+      if (videoId.startsWith('BV')) embed.searchParams.set('bvid', videoId);
+      else embed.searchParams.set('aid', videoId.slice(2));
+      embed.searchParams.set('page', page);
+      embed.searchParams.set('autoplay', '0');
+      const original = new URL(`https://www.bilibili.com/video/${videoId}/`);
+      if (page !== '1') original.searchParams.set('p', page);
+      return { embed: embed.href, original: original.href };
+    }
+
     // ================= 剧星榜（演员排行榜）逻辑 =================
 
     async function loadActorRankings() {
@@ -1308,6 +1383,10 @@ createApp({
     }
 
     function leaveTheater() {
+      if (viewMode.value === 'bilibili') {
+        bilibiliRequest++;
+        bilibiliLoading.value = false;
+      }
       theaterRequest++;
       saveProgressNow();
       if (videoEl.value) videoEl.value.pause();
@@ -1844,8 +1923,14 @@ createApp({
     function handleKeyDown(e) {
       if (isTextEditingTarget(e.target)) return;
       if (e.target?.tagName === 'SELECT') return;
+      const isSpace = e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar' || e.key?.toLowerCase() === 'k';
 
       if (window.chrome?.webview && document.documentElement.classList.contains('taskbar-preview')) {
+        if (viewMode.value === 'bilibili' && isSpace) {
+          e.preventDefault();
+          taskbarCommand('play');
+          return;
+        }
         if (e.key === 'Escape') {
           e.preventDefault();
           taskbarCommand('back');
@@ -1894,7 +1979,6 @@ createApp({
 
       if (viewMode.value === 'theater') {
         resetControlsTimer();
-        const isSpace = e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar' || e.key?.toLowerCase() === 'k';
         if (isSpace) {
           e.preventDefault();
           e.target?.blur?.();
@@ -2052,6 +2136,7 @@ createApp({
       switchTab,
       changePage,
       goHome,
+      showBilibili, openBilibiliVideo, bilibiliInput, bilibiliInputEl, bilibiliVideo, bilibiliError, bilibiliLoading,
       openTheater,
       closeTheater,
       switchEpisode,
