@@ -1,6 +1,6 @@
 {
   "name": "hongguo-open-player",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "红果开源播放器原生桌面版 (支持 macOS / Windows 跨平台原生应用 / 实时流式解密 / 沉浸式竖屏观影)",
   "main": "src/electron/main.js",
   "scripts": {

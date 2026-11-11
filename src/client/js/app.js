@@ -1492,40 +1492,9 @@ createApp({
       window.chrome?.webview?.postMessage('taskbar:' + command);
     }
 
-    let taskbarDrag = null;
-    let taskbarWasDragged = false;
-
-    function handleTaskbarClick(event) {
-      if (event.detail === 0) taskbarCommand('toggle');
-      else if (event.detail === 1 && !taskbarWasDragged) taskbarCommand('click');
-    }
-
-    function handleTaskbarDoubleClick() {
-      if (!taskbarWasDragged) taskbarCommand('toggle');
-    }
-
-    function startTaskbarDrag(event) {
-      if (event.button !== 0) return;
-      taskbarDrag = null;
-      taskbarWasDragged = false;
-      if (event.pointerType !== 'mouse' || !document.documentElement.classList.contains('taskbar-expanded')) return;
-      event.currentTarget.setPointerCapture(event.pointerId);
-      taskbarDrag = { pointerId: event.pointerId, x: event.screenX, y: event.screenY };
-      taskbarCommand('drag-start');
-    }
-
-    function moveTaskbarDrag(event) {
-      if (taskbarDrag?.pointerId !== event.pointerId || !(event.buttons & 1)) return;
-      if (!taskbarWasDragged && Math.hypot(event.screenX - taskbarDrag.x, event.screenY - taskbarDrag.y) < 4) return;
-      taskbarWasDragged = true;
-      taskbarCommand('drag-move');
-    }
-
-    function finishTaskbarDrag(event) {
-      if (taskbarDrag?.pointerId !== event.pointerId) return;
-      taskbarDrag = null;
-      taskbarCommand('drag-end');
-    }
+    const {
+      handleTaskbarClick, handleTaskbarDoubleClick, startTaskbarDrag, moveTaskbarDrag, finishTaskbarDrag, zoomTaskbarFromWheel
+    } = createTaskbarControls(taskbarCommand, () => document.documentElement.classList.contains('taskbar-expanded'));
 
     function handleDesktopMessage(event) {
       if (event.data === 'taskbar:play' && document.documentElement.classList.contains('taskbar-preview')) {
@@ -1535,10 +1504,6 @@ createApp({
         bilibiliInput.value = event.data.slice('bilibili:play:'.length);
         openBilibiliVideo();
       }
-    }
-
-    function zoomTaskbarFromWheel(event) {
-      if (event.deltaY) taskbarCommand(event.deltaY < 0 ? 'zoom-in' : 'zoom-out');
     }
 
     function switchEpisode(ep) {

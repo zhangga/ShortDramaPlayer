@@ -12,7 +12,7 @@ $framework = Join-Path ${env:ProgramFiles(x86)} 'Reference Assemblies\Microsoft\
 $icon = Join-Path $PSScriptRoot '..\..\build\icon.ico'
 $outputFile = [IO.Path]::GetFullPath($Output)
 & $compiler /nologo /warnaserror /target:winexe /platform:x64 /optimize+ /codepage:65001 `
-    "/out:$outputFile" "/win32icon:$icon" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll `
+    "/out:$outputFile" "/win32icon:$icon" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /reference:System.Web.Extensions.dll `
     "/reference:$framework\UIAutomationClient.dll" "/reference:$framework\UIAutomationTypes.dll" "/reference:$framework\WindowsBase.dll" `
     "/reference:$assemblies\Microsoft.Web.WebView2.Core.dll" `
     "/reference:$assemblies\Microsoft.Web.WebView2.WinForms.dll" $source $placement
