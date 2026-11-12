@@ -11,7 +11,8 @@ $desktop = Join-Path $repo 'desktop/windows'
 $nodeVersion = '22.23.4'
 $webViewVersion = '1.0.4314.35'
 $nodeName = "node-v$nodeVersion-win-x64"
-$archive = Join-Path $dist 'ShortDramaPlayer-win-x64.zip'
+$packageName = 'ShortDramaPlayer-win-x64'
+$archive = Join-Path $dist "$packageName.zip"
 $null = New-Item -ItemType Directory -Force -Path $cache, $codec, $dist
 
 function Get-VerifiedAsset([string] $Path, [string] $Uri, [string] $Sha256) {
@@ -82,14 +83,15 @@ $decoders = & (Join-Path $codec 'ffmpeg.exe') -hide_banner -decoders
 if ($LASTEXITCODE -ne 0 -or !($decoders -match ' bvc2 ')) { throw '缓存中的 FFmpeg 无法解码 ByteVC2。' }
 
 $stage = Join-Path $cache "package-$([guid]::NewGuid().ToString('N'))"
-$runtime = Join-Path $stage 'runtime'
-$player = Join-Path $stage 'player'
+$package = Join-Path $stage $packageName
+$runtime = Join-Path $package 'runtime'
+$player = Join-Path $package 'player'
 $source = Join-Path $player 'codec-source'
-$null = New-Item -ItemType Directory -Path $stage, $runtime, $player, (Join-Path $source 'scripts')
+$null = New-Item -ItemType Directory -Path $stage, $package, $runtime, $player, (Join-Path $source 'scripts')
 try {
-    & (Join-Path $desktop 'build-host.ps1') -WebView2Sdk $sdk -Output (Join-Path $stage '摸鱼侠.exe')
+    & (Join-Path $desktop 'build-host.ps1') -WebView2Sdk $sdk -Output (Join-Path $package '摸鱼侠.exe')
     foreach ($library in 'lib/net462/Microsoft.Web.WebView2.Core.dll', 'lib/net462/Microsoft.Web.WebView2.WinForms.dll', 'runtimes/win-x64/native/WebView2Loader.dll') {
-        Copy-Item -LiteralPath (Join-Path $sdk $library) -Destination $stage
+        Copy-Item -LiteralPath (Join-Path $sdk $library) -Destination $package
     }
     Copy-Item -LiteralPath (Join-Path $node 'node.exe') -Destination $runtime
     Copy-Item -LiteralPath (Join-Path $node 'LICENSE') -Destination (Join-Path $runtime 'Node-LICENSE.txt')
@@ -104,7 +106,7 @@ try {
     }
     $iconFolder = New-Item -ItemType Directory -Path (Join-Path $player 'build')
     Copy-Item -LiteralPath (Join-Path $repo 'build/icon.ico') -Destination $iconFolder.FullName
-    Copy-Item -LiteralPath (Join-Path $desktop '使用说明.txt') -Destination $stage
+    Copy-Item -LiteralPath (Join-Path $desktop '使用说明.txt') -Destination $package
     Copy-Item -LiteralPath $ffmpegSource, $x264Source -Destination $source
     Copy-Item -LiteralPath (Join-Path $repo 'vendor') -Destination $source -Recurse
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'build-bytevc2-windows.sh') -Destination (Join-Path $source 'scripts')
@@ -119,8 +121,7 @@ try {
     }
 
     $tempArchive = Join-Path $stage 'release.zip'
-    $entries = (Get-ChildItem -LiteralPath $stage).FullName
-    Compress-Archive -LiteralPath $entries -DestinationPath $tempArchive -CompressionLevel Optimal
+    Compress-Archive -LiteralPath $package -DestinationPath $tempArchive -CompressionLevel Optimal
     Move-Item -LiteralPath $tempArchive -Destination $archive -Force
     Get-Item -LiteralPath $archive
 }

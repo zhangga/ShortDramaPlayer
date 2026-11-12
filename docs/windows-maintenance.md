@@ -20,7 +20,7 @@ pwsh -File .\scripts\package-windows.ps1
 
 脚本校验并缓存指定版本的 Node.js、WebView2 SDK 和编解码器源码，按 `package-lock.json` 安装生产依赖，生成 `dist/ShortDramaPlayer-win-x64.zip`。构建缓存位于 `.build/windows/`。FFmpeg、x264、ByteVC2 补丁或构建脚本发生变化时，打包会重新编译解码器。
 
-完整解压后运行 `摸鱼侠.exe`。运行需要 Microsoft Edge WebView2 Runtime，HEVC 片源依赖系统的 HEVC 解码支持。使用记录保存在解压目录的 `data/` 中。
+完整解压后，打开 `ShortDramaPlayer-win-x64` 文件夹并运行 `摸鱼侠.exe`。运行需要 Microsoft Edge WebView2 Runtime，HEVC 片源依赖系统的 HEVC 解码支持。使用记录保存在程序同目录下的 `data/` 中。
 
 ## 验证
 

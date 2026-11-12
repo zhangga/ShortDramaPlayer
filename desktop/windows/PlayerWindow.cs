@@ -110,6 +110,8 @@ internal sealed class PlayerWindow : Form
     private const string BrowseBilibiliCommand = "bilibili:browse:";
     private const string BrowseDouyinCommand = "douyin:browse:";
 
+    private enum GuideStep { AwaitingHome, Play, Enter, Expand, Return, Complete }
+
     private sealed class SiteView
     {
         internal readonly WebView2 Browser = new WebView2();
@@ -167,6 +169,9 @@ internal sealed class PlayerWindow : Form
     private bool inTaskbar;
     private bool taskbarExpanded;
     private bool taskbarBusy;
+    private TaskbarGuide taskbarGuide;
+    private string taskbarGuidePath;
+    private GuideStep taskbarGuideStep;
     private Rectangle compactBounds;
     private Rectangle taskbarSlot;
     private double taskbarAspect = 9.0 / 16.0;
@@ -284,6 +289,7 @@ internal sealed class PlayerWindow : Form
 
         Shown += Initialize;
         Resize += HandleResize;
+        LocationChanged += delegate { PositionTaskbarGuide(); };
         fishingTimer.Tick += async delegate { await SampleFishingPlayback(); };
         taskbarTimer.Tick += async delegate { await RefreshTaskbar(); };
         taskbarClickTimer.Tick += async delegate
@@ -291,6 +297,74 @@ internal sealed class PlayerWindow : Form
             taskbarClickTimer.Stop();
             await ToggleTaskbarPlayback();
         };
+    }
+
+    private void ShowTaskbarGuide(GuideStep step)
+    {
+        if (taskbarGuideStep == GuideStep.Complete || taskbarGuideStep == step) return;
+        taskbarGuideStep = step;
+        if (taskbarGuide == null) taskbarGuide = new TaskbarGuide(Font, CompleteTaskbarGuide);
+
+        switch (step)
+        {
+            case GuideStep.Play:
+                taskbarGuide.SetStep(1, "先播放一段视频", "从首页选一个视频开始播放。视频播放后，引导会自动进入下一步。");
+                break;
+            case GuideStep.Enter:
+                taskbarGuide.SetStep(2, "把画面移到任务栏", "点击高亮的「任务栏」按钮，视频会移到 Windows 任务栏的空位。");
+                break;
+            case GuideStep.Expand:
+                taskbarGuide.SetStep(3, "双击展开完整画面", "双击任务栏里的视频，展开完整画面。单击画面可以暂停或继续播放。");
+                break;
+            case GuideStep.Return:
+                taskbarGuide.SetStep(4, "右键返回", "在画面上点右键，回到播放器或原网页。再次双击可以把画面缩回任务栏。");
+                break;
+        }
+        bool highlight = step == GuideStep.Enter;
+        taskbarButton.BackColor = highlight ? TaskbarGuide.Accent : sizeButton.BackColor;
+        taskbarButton.ForeColor = highlight ? Color.FromArgb(20, 26, 46) : Color.White;
+        PositionTaskbarGuide();
+    }
+
+    private void PositionTaskbarGuide()
+    {
+        if (taskbarGuide == null || taskbarGuide.IsDisposed || Disposing ||
+            taskbarGuideStep == GuideStep.AwaitingHome || taskbarGuideStep == GuideStep.Complete) return;
+        bool guideInTaskbar = taskbarGuideStep == GuideStep.Expand || taskbarGuideStep == GuideStep.Return;
+        if (WindowState == FormWindowState.Minimized || guideInTaskbar != inTaskbar || !Visible)
+        {
+            taskbarGuide.Hide();
+            return;
+        }
+
+        if (guideInTaskbar)
+        {
+            taskbarGuide.Follow(this, Bounds, beside: taskbarExpanded, above: true);
+        }
+        else if (taskbarGuideStep == GuideStep.Enter)
+        {
+            taskbarGuide.Follow(this, taskbarButton.RectangleToScreen(taskbarButton.ClientRectangle));
+        }
+        else
+        {
+            Rectangle anchor = toolbar.RectangleToScreen(toolbar.ClientRectangle);
+            // Keep the home page's search and navigation available underneath the native toolbar.
+            anchor.Y = anchor.Bottom + 60 * DeviceDpi / 96;
+            anchor.Height = 1;
+            taskbarGuide.Follow(this, anchor, beside: true);
+        }
+    }
+
+    private void CompleteTaskbarGuide()
+    {
+        if (taskbarGuideStep == GuideStep.Complete) return;
+        taskbarGuideStep = GuideStep.Complete;
+        taskbarGuide.Hide();
+        taskbarButton.BackColor = sizeButton.BackColor;
+        taskbarButton.ForeColor = Color.White;
+        try { File.WriteAllText(taskbarGuidePath, "seen"); }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
     }
 
     private async void Initialize(object sender, EventArgs args)
@@ -308,6 +382,8 @@ internal sealed class PlayerWindow : Form
             string root = AppDomain.CurrentDomain.BaseDirectory;
             string data = Path.Combine(root, "data");
             Directory.CreateDirectory(data);
+            taskbarGuidePath = Path.Combine(data, "taskbar-guide.txt");
+            if (File.Exists(taskbarGuidePath)) taskbarGuideStep = GuideStep.Complete;
             expandedZoomPath = Path.Combine(data, "taskbar-expanded-zoom.txt");
             rememberedExpandedZoom = ReadExpandedZoom();
             int port = await StartService(root, data);
@@ -366,6 +442,7 @@ internal sealed class PlayerWindow : Form
                 {
                     browser.Visible = nav.IsSuccess || browser.Visible;
                     taskbarButton.Enabled = nav.IsSuccess;
+                    if (nav.IsSuccess && taskbarGuideStep == GuideStep.AwaitingHome) ShowTaskbarGuide(GuideStep.Play);
                 }
             };
             core.WebMessageReceived += async delegate(object _, CoreWebView2WebMessageReceivedEventArgs message)
@@ -699,6 +776,7 @@ internal sealed class PlayerWindow : Form
             FormBorderStyle = FormBorderStyle.None;
             toolbar.Visible = false;
             inTaskbar = true;
+            PositionTaskbarGuide();
             taskbarBilibiliFrame = frame;
             taskbarExpanded = false;
             if (view != null)
@@ -714,7 +792,11 @@ internal sealed class PlayerWindow : Form
                 await UpdateTaskbarView();
                 await browser.CoreWebView2.ExecuteScriptAsync("document.querySelector('.taskbar-preview-button')?.focus()");
             }
-            if (!IsDisposed && inTaskbar) taskbarTimer.Start();
+            if (!IsDisposed && inTaskbar)
+            {
+                ShowTaskbarGuide(GuideStep.Expand);
+                taskbarTimer.Start();
+            }
             return;
         }
         catch (Exception error) { Debug.WriteLine(error); }
@@ -798,11 +880,11 @@ internal sealed class PlayerWindow : Form
                 await ToggleTaskbarPlayback();
                 break;
             case "taskbar:exit":
-                await LeaveTaskbar();
+                await LeaveTaskbar(userExit: true);
                 break;
             case "taskbar:back":
                 if (taskbarExpanded) await ToggleTaskbarPreview();
-                else await LeaveTaskbar();
+                else await LeaveTaskbar(userExit: true);
                 break;
             case "taskbar:drag-start":
                 if (taskbarExpanded) taskbarDragOffset = Cursor.Position - new Size(Location);
@@ -842,6 +924,7 @@ internal sealed class PlayerWindow : Form
         if (taskbarExpanded) taskbarExpandedZoom = rememberedExpandedZoom;
         PlaceTaskbar(taskbarSlot);
         await UpdateTaskbarView();
+        if (inTaskbar && taskbarExpanded && taskbarGuideStep == GuideStep.Expand) ShowTaskbarGuide(GuideStep.Return);
     }
 
     private void MoveExpandedPreview(Point cursor)
@@ -989,14 +1072,17 @@ internal sealed class PlayerWindow : Form
         toolbar.Visible = true;
     }
 
-    private async Task LeaveTaskbar()
+    private async Task LeaveTaskbar(bool userExit = false)
     {
         if (!inTaskbar || IsDisposed) return;
         CoreWebView2Frame frame = taskbarBilibiliFrame;
         SiteView view = browsingSite;
         int context = siteTaskbarContext;
         siteTaskbarContext = 0;
+        if (userExit && taskbarGuideStep == GuideStep.Return) CompleteTaskbarGuide();
         RestoreCompactBounds();
+        if (taskbarGuideStep == GuideStep.Expand || taskbarGuideStep == GuideStep.Return) ShowTaskbarGuide(GuideStep.Enter);
+        else PositionTaskbarGuide();
         try
         {
             if (context != 0)
@@ -1016,6 +1102,7 @@ internal sealed class PlayerWindow : Form
 
     private async void HandleResize(object sender, EventArgs args)
     {
+        PositionTaskbarGuide();
         bool minimized = WindowState == FormWindowState.Minimized;
         if (!minimized) lastVisibleState = WindowState;
         if (wasMinimized == minimized) return;
@@ -1090,7 +1177,10 @@ internal sealed class PlayerWindow : Form
                 bool sameSource = browsingSite == view && (view == null
                     ? frame == bilibiliFrame && page == browser.Source
                     : page == view.Browser.Source);
-                SendFishing("FISHING_MODE=" + (sameSource && playing == "true" ? FishingMode() : "off"));
+                string currentMode = sameSource && playing == "true" ? FishingMode() : "off";
+                SendFishing("FISHING_MODE=" + currentMode);
+                if (taskbarGuideStep == GuideStep.Play && currentMode != "off" && !inTaskbar && !taskbarBusy && taskbarButton.Enabled)
+                    ShowTaskbarGuide(GuideStep.Enter);
             }
         }
         catch (InvalidOperationException) { if (!IsDisposed) StopFishingPlayback(); }
