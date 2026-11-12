@@ -964,11 +964,40 @@
               <div class="keys"><kbd>Esc</kbd></div>
               <div class="desc">退出全屏 / 关闭当前弹窗</div>
             </div>
-            <div class="shortcut-item">
+            <div v-if="!macDesktop" class="shortcut-item">
               <div class="keys"><kbd>Alt</kbd></div>
               <div class="desc">Windows 原生传统菜单栏唤出 / 隐藏</div>
             </div>
           </div>
+          <section v-if="macDesktop" class="dock-shortcuts" aria-labelledby="dock-shortcuts-title">
+            <h4 id="dock-shortcuts-title">贴 Dock</h4>
+            <div class="shortcut-list">
+              <div class="shortcut-item">
+                <div class="keys"><span class="mouse-action">单击画面</span></div>
+                <div class="desc">播放 / 暂停</div>
+              </div>
+              <div class="shortcut-item">
+                <div class="keys"><span class="mouse-action">双击画面</span></div>
+                <div class="desc">展开 / 缩回画面</div>
+              </div>
+              <div class="shortcut-item">
+                <div class="keys"><span class="mouse-action">右键画面或点「返回小窗」</span></div>
+                <div class="desc">回到带控制栏的小窗</div>
+              </div>
+              <div class="shortcut-item">
+                <div class="keys"><span class="mouse-action">滚动 / 拖动</span></div>
+                <div class="desc">等比缩放 / 移动画面</div>
+              </div>
+              <div class="shortcut-item">
+                <div class="keys"><kbd>Esc</kbd></div>
+                <div class="desc">展开时缩回 Dock，贴 Dock 时返回小窗</div>
+              </div>
+              <div v-if="desktopState.shortcut" class="shortcut-item">
+                <div class="keys"><kbd aria-label="Control + Option + F9">⌃⌥F9</kbd></div>
+                <div class="desc">全局收起 / 恢复窗口</div>
+              </div>
+            </div>
+          </section>
         </div>
         <div class="shortcuts-modal-footer">
           <button class="shortcuts-confirm-btn" @click="closeShortcutsModal">我知道了</button>

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
-const { app, BaseWindow, WebContentsView, globalShortcut, screen, dialog, Notification } = require('electron');
+const { app, BaseWindow, BrowserWindow, WebContentsView, globalShortcut, screen, dialog, Notification } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const { sites, siteURL, createSiteView } = require('./site-view');
 const {
-  findDock, dockPreviewBounds, expandedPreviewBounds, clamp,
+  findDock, dockPreviewBounds, expandedPreviewBounds, dockGuideBounds, clamp,
   MIN_DOCK_SCALE, MAX_DOCK_SCALE, DEFAULT_DOCK_SCALE, MIN_ZOOM, MAX_ZOOM, DEFAULT_ZOOM
 } = require('./dock-placement');
 const { getFishing } = require('../server/services/fishingService');
@@ -31,13 +31,13 @@ function loadPreviewSize(file, fallback, min, max) {
   return fallback;
 }
 
-function savePreviewSize(file, value) {
+function saveDockPreference(file, value) {
   try {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file + '.tmp', JSON.stringify(value));
     fs.renameSync(file + '.tmp', file);
   } catch (error) {
-    console.warn('Unable to save Dock preview size:', error.message);
+    console.warn('Unable to save Dock preference:', error.message);
   }
 }
 
@@ -53,8 +53,10 @@ function createMacDesktop(windowOptions, appUrl) {
   const userData = app.getPath('userData');
   const zoomFile = path.join(userData, 'dock-expanded-zoom.json');
   const dockScaleFile = path.join(userData, 'dock-preview-scale.json');
+  const guideFile = path.join(userData, 'dock-guide-seen.json');
   let zoom = loadPreviewSize(zoomFile, DEFAULT_ZOOM, MIN_ZOOM, MAX_ZOOM);
   let dockScale = loadPreviewSize(dockScaleFile, DEFAULT_DOCK_SCALE, MIN_DOCK_SCALE, MAX_DOCK_SCALE);
+  let dockGuideSeen = fs.existsSync(guideFile);
   let dockLocation;
 
   const siteViews = new Map();
@@ -206,11 +208,47 @@ function createMacDesktop(windowOptions, appUrl) {
     const contentBounds = { x: 0, y: 0, width: bounds.width, height: bounds.height };
     current.source.setBounds(contentBounds);
     current.input.setBounds(contentBounds);
+    current.guide?.setBounds(dockGuideBounds(targetDisplay.workArea, bounds));
   }
 
   function setPreviewLayout(current) {
     updatePreviewBounds(current);
     current.input.webContents.send(STATE, { expanded: current.expanded });
+  }
+
+  async function showDockGuide(current) {
+    const previewBounds = current.window.getBounds();
+    const { workArea } = screen.getDisplayMatching(previewBounds);
+    const guide = new BrowserWindow({
+      ...dockGuideBounds(workArea, previewBounds),
+      parent: current.window,
+      frame: false, show: false, resizable: false, movable: false, skipTaskbar: true,
+      minimizable: false, maximizable: false, fullscreenable: false, acceptFirstMouse: true,
+      backgroundColor: '#151821',
+      webPreferences: LOCAL_VIEW
+    });
+    current.guide = guide;
+    let shown = false;
+    guide.once('closed', () => {
+      current.guide = null;
+      if (shown) {
+        dockGuideSeen = true;
+        saveDockPreference(guideFile, true);
+      }
+    });
+    const url = appUrl + '/mac-dock-guide.html';
+    guide.webContents.ipc.on(COMMAND, (event, message) => {
+      if (event.senderFrame === guide.webContents.mainFrame && event.senderFrame.url === url &&
+          message === 'dock-guide:dismiss') guide.destroy();
+    });
+    await guide.loadURL(url);
+    if (guide.isDestroyed()) return;
+    if (current !== preview || !current.window.isVisible()) {
+      guide.destroy();
+      return;
+    }
+    guide.showInactive();
+    shown = true;
   }
 
   async function refreshPreview(current) {
@@ -293,6 +331,11 @@ function createMacDesktop(windowOptions, appUrl) {
       floating.show();
       input.webContents.focus();
       current.timer = setInterval(() => refreshPreview(current), 1500);
+      if (!dockGuideSeen) void showDockGuide(current).catch(error => {
+        if (current !== preview || hidden) return;
+        current.guide?.destroy();
+        console.warn('Unable to show Dock guide:', error.message);
+      });
     } catch (error) {
       if (!window.isDestroyed()) {
         if (preview === current) await leavePreview();
@@ -307,6 +350,7 @@ function createMacDesktop(windowOptions, appUrl) {
 
   function closePreviewWindow(current) {
     clearInterval(current.timer);
+    current.guide?.destroy();
     if (!current.input.webContents.isDestroyed()) current.input.webContents.close();
     if (!current.window.isDestroyed()) current.window.destroy();
   }
@@ -404,7 +448,7 @@ function createMacDesktop(windowOptions, appUrl) {
           dockScale = next;
         }
         updatePreviewBounds(current);
-        savePreviewSize(current.expanded ? zoomFile : dockScaleFile, next);
+        saveDockPreference(current.expanded ? zoomFile : dockScaleFile, next);
         break;
       }
     }
@@ -434,7 +478,10 @@ function createMacDesktop(windowOptions, appUrl) {
     }
     clearTimeout(pendingClick);
     hidden = true;
-    if (preview) preview.drag = null;
+    if (preview) {
+      preview.drag = null;
+      preview.guide?.destroy();
+    }
     updateMute();
     visible.hide();
     await pause();

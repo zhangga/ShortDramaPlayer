@@ -3084,6 +3084,12 @@ html.platform-win .app-header { padding-right: 160px; }
   gap: 10px;
 }
 
+.dock-shortcuts h4 {
+  margin: 16px 0 8px;
+  color: var(--text-main);
+  font-size: 14px;
+}
+
 .shortcut-item {
   display: flex;
   align-items: center;

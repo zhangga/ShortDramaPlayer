@@ -1,27 +1,30 @@
 // SPDX-License-Identifier: GPL-3.0-only
 const desktop = window.shortDramaDesktop;
 const root = document.documentElement;
-const button = document.querySelector('button');
+const video = document.querySelector('.preview-video');
+const returnButton = document.querySelector('.preview-return');
 const send = (command, point) => desktop.send('taskbar:' + command, point);
 const controls = createTaskbarControls(send);
 
-button.addEventListener('click', controls.handleTaskbarClick);
-button.addEventListener('dblclick', controls.handleTaskbarDoubleClick);
-button.addEventListener('pointerdown', controls.startTaskbarDrag);
-button.addEventListener('pointermove', controls.moveTaskbarDrag);
+video.addEventListener('click', controls.handleTaskbarClick);
+video.addEventListener('dblclick', controls.handleTaskbarDoubleClick);
+video.addEventListener('pointerdown', controls.startTaskbarDrag);
+video.addEventListener('pointermove', controls.moveTaskbarDrag);
 for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
-  button.addEventListener(type, controls.finishTaskbarDrag);
+  video.addEventListener(type, controls.finishTaskbarDrag);
 }
-button.addEventListener('wheel', event => {
+returnButton.addEventListener('click', () => send('exit'));
+window.addEventListener('wheel', event => {
   event.preventDefault();
   controls.zoomTaskbarFromWheel(event);
 }, { passive: false });
-button.addEventListener('contextmenu', event => {
+window.addEventListener('contextmenu', event => {
   event.preventDefault();
   send('exit');
 });
 window.addEventListener('keydown', event => {
   if (event.metaKey || event.altKey || event.ctrlKey || event.repeat) return;
+  if (event.key === ' ' && event.target === returnButton) return;
   const action = { Escape: 'back', Home: 'fit', End: 'max', ' ': 'play', k: 'play' }[event.key];
   if (action) {
     event.preventDefault();

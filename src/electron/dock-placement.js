@@ -69,7 +69,21 @@ function expandedPreviewBounds(area, anchor, aspect, zoom, location) {
   }, area);
 }
 
+function dockGuideBounds(area, preview) {
+  const width = Math.min(240, area.width);
+  const height = Math.min(76, area.height);
+  const alignedX = right(preview) - width;
+  const positions = [
+    { x: alignedX, y: preview.y - height - GAP },
+    { x: alignedX, y: bottom(preview) + GAP },
+    { x: right(preview) + GAP, y: preview.y },
+    { x: preview.x - width - GAP, y: preview.y }
+  ].map(position => keepInArea({ ...position, width, height }, area));
+  return positions.find(guide => bottom(guide) <= preview.y || guide.y >= bottom(preview) ||
+    right(guide) <= preview.x || guide.x >= right(preview)) ?? positions[0];
+}
+
 module.exports = {
-  findDock, dockPreviewBounds, expandedPreviewBounds, keepInArea, clamp,
+  findDock, dockPreviewBounds, expandedPreviewBounds, dockGuideBounds, keepInArea, clamp,
   MIN_DOCK_SCALE, MAX_DOCK_SCALE, DEFAULT_DOCK_SCALE, MIN_ZOOM, MAX_ZOOM, DEFAULT_ZOOM
 };

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>贴 Dock 操作提示</title>
+  <style>
+    body {
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 8px;
+      height: 100vh;
+      margin: 0;
+      padding: 8px 12px;
+      border: 1px solid #383f4f;
+      border-radius: 10px;
+      background: #151821;
+      color: #f3f4f6;
+      font: 13px/1.4 -apple-system, "PingFang SC", sans-serif;
+    }
+    p { margin: 0; }
+    button {
+      align-self: flex-end;
+      padding: 3px 9px;
+      border: 1px solid #41495a;
+      border-radius: 6px;
+      background: #262c3a;
+      color: inherit;
+      font: inherit;
+      cursor: pointer;
+    }
+    button:hover { background: #343d50; }
+    button:focus-visible { outline: 2px solid #ff8396; }
+  </style>
+</head>
+<body>
+  <p>右键返回小窗 · 双击展开或缩回</p>
+  <button type="button">知道了</button>
+  <script src="/js/mac-dock-guide.js"></script>
+</body>
+</html>

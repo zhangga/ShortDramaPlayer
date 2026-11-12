@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { findDock, dockPreviewBounds, expandedPreviewBounds } = require('../../src/electron/dock-placement');
+const { findDock, dockPreviewBounds, expandedPreviewBounds, dockGuideBounds } = require('../../src/electron/dock-placement');
 
 const display = {
   bounds: { x: 0, y: 0, width: 1440, height: 900 },
@@ -72,4 +72,16 @@ test('expanded playback fits the full image, clamps to the work area, and restor
   const moved = expandedPreviewBounds(display.workArea, anchor, portrait, 0.35, { x: -20, y: 120 });
   assert.deepEqual(moved, { ...bounds, x: 0, y: 120 });
   assert.deepEqual(expandedPreviewBounds(display.workArea, anchor, portrait, 0.35), bounds);
+});
+
+test('the Dock guide stays on screen beside the preview', () => {
+  const area = display.workArea;
+  assert.deepEqual(dockGuideBounds(area, { x: 1026, y: 790, width: 59, height: 104 }),
+    { x: 845, y: 708, width: 240, height: 76 });
+  assert.deepEqual(dockGuideBounds(area, { x: 6, y: 24, width: 59, height: 104 }),
+    { x: 0, y: 134, width: 240, height: 76 });
+
+  const shortDisplay = { x: -900, y: 24, width: 900, height: 280 };
+  assert.deepEqual(dockGuideBounds(shortDisplay, { x: -300, y: 58, width: 250, height: 224 }),
+    { x: -546, y: 58, width: 240, height: 76 });
 });
